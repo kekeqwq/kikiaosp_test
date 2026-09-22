@@ -1,5 +1,5 @@
 ZYGOTE_FORCE_64 := true
-$(call inherit-product, device/google/cuttlefish/vsoc_arm64/phone/aosp_cf.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_arm64.mk)
 
 # KikiAOSP product identity. Keep the inherited Cuttlefish hardware contract
 # unchanged; all Kiki-specific behavior belongs in this product/device tree.
