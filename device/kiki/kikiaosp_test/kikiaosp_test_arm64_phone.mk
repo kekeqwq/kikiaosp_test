@@ -192,3 +192,5 @@ PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += system/lib/android.hardware.gr
 # Expose the ranchu HWC3 AIDL instance to servicemanager in the no-APEX path.
 DEVICE_MANIFEST_FILE += device/kiki/kikiaosp_test/kiki_hwc3.xml
 
+
+PRODUCT_PACKAGES += adbd_flags_c_lib
