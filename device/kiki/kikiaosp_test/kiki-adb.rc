@@ -1,13 +1,4 @@
 # KikiAOSP ADB bring-up: TCP transport for the QEMU user-mode network.
-service kiki_adbd /system/apex/com.android.adbd/bin/adbd --root_seclabel=u:r:su:s0
-    class core
-    disabled
-    seclabel u:r:adbd:s0
-    user root
-
 on property:apexd.status=activated
     setprop service.adb.tcp.port 5555
-    start kiki_adbd
-on property:init.svc.kiki_adbd=stopped && property:apexd.status=activated
-    setprop service.adb.tcp.port 5555
-    start kiki_adbd
+    exec_background root root -- /system/apex/com.android.adbd/bin/adbd --root_seclabel=u:r:su:s0
