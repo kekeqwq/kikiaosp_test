@@ -130,6 +130,7 @@ cc_prebuilt_library_shared { name: "kiki-libandroidio", srcs: ["prebuilt/lib64/l
 cc_prebuilt_binary {
     name: "kiki-adbd",
     srcs: ["prebuilt/kiki-adbd"],
+    filename: "kiki-adbd",
     installable: true,
 }
     check_elf_files: false,
