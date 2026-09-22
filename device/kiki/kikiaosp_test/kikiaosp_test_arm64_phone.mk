@@ -22,6 +22,7 @@ PRODUCT_PACKAGES += kiki-allocator-system kiki-libnativeloader-bootstrap kiki-li
 
 # Early boot linkerconfig must use bootstrap linker before runtime APEX activation.
 PRODUCT_PACKAGES += linkerconfig
+PRODUCT_PACKAGES += plat_sepolicy_vers.txt
 PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += system/bin/linkerconfig system/etc/fstab.ranchu system/lib64/libnativeloader.so system/lib64/libsigchain.so system/lib64/libicu.so system/lib64/libicui18n.so system/lib64/libnativebridge.so system/lib64/libicuuc.so system/lib64/bootstrap/libicui18n.so system/lib64/bootstrap/libandroidicu.so system/lib64/bootstrap/libnativehelper.so system/lib64/libart.so system/lib64/libartbase.so system/lib64/libartpalette.so system/lib64/libdexfile.so system/lib64/libprofile.so system/lib64/libstatspull.so system/lib64/libstatssocket.so system/etc/ld.config.kiki.txt
 
 
