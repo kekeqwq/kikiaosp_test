@@ -1,23 +1,13 @@
 # KikiAOSP ADB bring-up: TCP transport for the QEMU user-mode network.
-# The USB gadget is not required for this emulator checkpoint.
 on boot
     setprop service.adb.tcp.port 5555
     start adbd
 
-on property:init.svc.adbd=stopped
+# APEX adbd cannot start until apexd has loaded all updatable configs.
+on property:apexd.status=ready
     setprop service.adb.tcp.port 5555
     start adbd
 
-# APEX adbd is started after apexd has mounted the APEX payload.
-service kiki_adbd /system/apex/com.android.adbd/bin/adbd --root_seclabel=u:r:su:s0
-    class core
-    socket adbd seqpacket 660 system system
-    disabled
-    seclabel u:r:adbd:s0
-    user root
-
-on post-fs-data
+on property:init.svc.adbd=stopped && property:apexd.status=ready
     setprop service.adb.tcp.port 5555
-    start kiki_adbd
-on property:init.svc.kiki_adbd=stopped
-    start kiki_adbd
+    start adbd
