@@ -7,5 +7,13 @@ service kiki_adbd /system/bin/kiki-adbd -a --root_seclabel=u:r:su:s0
     user root
 
 on property:ro.persistent_properties.ready=true
+    # The minimal image does not run aconfigd.  adbd's generated flags
+    # provider still reads the system storage files from /metadata.
+    mkdir /metadata 0755 root root
+    mkdir /metadata/aconfig 0755 root root
+    mkdir /metadata/aconfig/maps 0755 root root
+    mkdir /metadata/aconfig/boot 0755 root root
+    copy /system/etc/aconfig/package.map /metadata/aconfig/maps/com.android.adbd.package.map
+    copy /system/etc/aconfig/flag.val /metadata/aconfig/boot/com.android.adbd.val
     setprop service.adb.tcp.port 5555
     start kiki_adbd
