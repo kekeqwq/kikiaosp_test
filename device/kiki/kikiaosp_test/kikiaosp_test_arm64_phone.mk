@@ -10,7 +10,6 @@ PRODUCT_MANUFACTURER := Kiki
 PRODUCT_MODEL := KikiAOSP ARM64 Phone
 
 PRODUCT_SYSTEM_NAME := KikiAOSP
-PRODUCT_PRODUCT_PROPERTIES += ro.kikiaosp.no_adbconnection=true
 PRODUCT_SYSTEM_DEVICE := kikiaosp_test
 PRODUCT_SYSTEM_BRAND := KikiAOSP
 
@@ -22,6 +21,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
 PRODUCT_PACKAGES += kiki-allocator-system kiki-libnativeloader-bootstrap kiki-libsigchain-bootstrap kiki-libicu-bootstrap kiki-libnativebridge-bootstrap kiki-libicuuc-bootstrap kiki-libicui18n-bootstrap kiki-libandroidicu-bootstrap kiki-libnativehelper-bootstrap kiki-libart kiki-libartbase kiki-libartpalette kiki-libdexfile kiki-libprofile kiki-libstatspull kiki-libstatssocket kiki-libconnectivity-native kiki-libicu_jni kiki-libjavacore kiki-libopenjdk kiki-libopenjdkjvm kiki-libandroidio
 
 # Early boot linkerconfig must use bootstrap linker before runtime APEX activation.
+PRODUCT_PACKAGES += adbd
 PRODUCT_PACKAGES += linkerconfig
 PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += system/bin/linkerconfig system/etc/fstab.ranchu system/lib64/libnativeloader.so system/lib64/libsigchain.so system/lib64/libicu.so system/lib64/libicui18n.so system/lib64/libnativebridge.so system/lib64/libicuuc.so system/lib64/bootstrap/libicui18n.so system/lib64/bootstrap/libandroidicu.so system/lib64/bootstrap/libnativehelper.so system/lib64/libart.so system/lib64/libartbase.so system/lib64/libartpalette.so system/lib64/libdexfile.so system/lib64/libprofile.so system/lib64/libstatspull.so system/lib64/libstatssocket.so system/etc/ld.config.kiki.txt
 
@@ -34,7 +34,8 @@ PRODUCT_COPY_FILES += \
 # Temporary ART crash diagnostics for Zygote bring-up.
 PRODUCT_COPY_FILES += device/kiki/kikiaosp_test/kiki-art-logcat.rc:system/etc/init/kiki-art-logcat.rc
 PRODUCT_COPY_FILES += device/kiki/kikiaosp_test/kiki-minimal-native.rc:system/etc/init/kiki-minimal-native.rc
-PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += system/etc/init/kiki-art-logcat.rc system/etc/init/kiki-minimal-native.rc
+PRODUCT_COPY_FILES += device/kiki/kikiaosp_test/kiki-adb.rc:system/etc/init/kiki-adb.rc
+PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += system/etc/init/kiki-art-logcat.rc system/etc/init/kiki-minimal-native.rc system/etc/init/kiki-adb.rc
 
 # KikiAOSP no-APEX runtime data. Keep these files version-matched to this build.
 PRODUCT_COPY_FILES += device/kiki/kikiaosp_test/prebuilt/icu/icudt78l.dat:system/framework/etc/icu/icudt78l.dat
