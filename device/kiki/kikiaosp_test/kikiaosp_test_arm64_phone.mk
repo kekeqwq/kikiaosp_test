@@ -26,6 +26,7 @@ PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += system/bin/linkerconfig system
 
 
 # Runtime apexd/vold need a second-stage default fstab.
+PRODUCT_COPY_FILES += device/kiki/kikiaosp_test/prebuilt/selinux/plat_sepolicy_vers.txt:vendor/etc/selinux/plat_sepolicy_vers.txt
 PRODUCT_COPY_FILES += \
     device/kiki/kikiaosp_test/fstab.ranchu:system/etc/fstab.ranchu \
     device/kiki/kikiaosp_test/ld.config.kiki.txt:system/etc/ld.config.kiki.txt
