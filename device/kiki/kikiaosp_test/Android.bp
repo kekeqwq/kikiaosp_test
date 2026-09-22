@@ -128,8 +128,8 @@ cc_prebuilt_library_shared { name: "kiki-libopenjdkjvm", srcs: ["prebuilt/lib64/
 cc_prebuilt_library_shared { name: "kiki-libandroidio", srcs: ["prebuilt/lib64/libandroidio.so"], compile_multilib: "64", stem: "libandroidio", installable: true, check_elf_files: false, system_shared_libs: [], }
 
 cc_prebuilt_binary {
-    name:  kiki-adbd,
-    srcs: [\prebuilt/kiki-adbd\],
-    filename: kiki-adbd,
+    name: "kiki-adbd",
+    srcs: ["prebuilt/kiki-adbd"],
+    filename: "kiki-adbd",
     installable: true,
 }
