@@ -193,7 +193,7 @@ index b83ac60f9b..2ffcdd3ab2 100644
        dex_file_pointer = external_dex_files_[i]->Begin();
      } else {
 diff --git a/art/runtime/runtime.cc b/art/runtime/runtime.cc
-index ea1052882a..8dca143af0 100644
+index ea1052882a..cf3300ecdc 100644
 --- a/art/runtime/runtime.cc
 +++ b/art/runtime/runtime.cc
 @@ -43,6 +43,14 @@
@@ -341,29 +341,6 @@ index ea1052882a..8dca143af0 100644
  
    if (trace_config_.get() != nullptr && trace_config_->trace_file != "") {
      ScopedThreadStateChange tsc(self, ThreadState::kWaitingForMethodTracingStart);
-@@ -1526,14 +1574,14 @@ inline void Runtime::CreatePreAllocatedExceptions(Thread* self) {
-                               "Ljava/lang/OutOfMemoryError;",
-                               "OutOfMemoryError thrown while trying to handle a stack overflow; "
-                               "no stack trace available");
--  // Pre-allocate a NoClassDefFoundError for the common case of failing to find a system class
--  // ahead of checking the application's class loader.
--  CreatePreAllocatedException(self,
--                              this,
--                              &pre_allocated_NoClassDefFoundError_,
--                              "Ljava/lang/NoClassDefFoundError;",
--                              "Class not found using the boot class loader; "
--                              "no stack trace available");
-+// KIKI_DISABLE_PREALLOC   // Pre-allocate a NoClassDefFoundError for the common case of failing to find a system class
-+// KIKI_DISABLE_PREALLOC   // ahead of checking the application's class loader.
-+// KIKI_DISABLE_PREALLOC   CreatePreAllocatedException(self,
-+// KIKI_DISABLE_PREALLOC                               this,
-+// KIKI_DISABLE_PREALLOC                               &pre_allocated_NoClassDefFoundError_,
-+// KIKI_DISABLE_PREALLOC                               "Ljava/lang/NoClassDefFoundError;",
-+// KIKI_DISABLE_PREALLOC                               "Class not found using the boot class loader; "
-+// KIKI_DISABLE_PREALLOC                               "no stack trace available");
- }
- 
- std::string Runtime::GetApexVersions(ArrayRef<const std::string> boot_class_path_locations) {
 @@ -1942,8 +1990,9 @@ bool Runtime::Init(RuntimeArgumentMap&& runtime_options_in) {
  
    bool has_explicit_jdwp_options = runtime_options.Get(Opt::JdwpOptions) != nullptr;
