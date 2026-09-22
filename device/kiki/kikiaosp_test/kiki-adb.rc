@@ -1,5 +1,5 @@
 # KikiAOSP ADB bring-up: non-updatable adbd with init-managed socket.
-service kiki_adbd /system/bin/kiki-adbd -a --root_seclabel=u:r:su:s0
+service kiki_adbd /system/bin/kiki-adb-wait.sh
     class core
     socket adbd seqpacket 660 system system
     disabled
