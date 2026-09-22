@@ -5,5 +5,5 @@ service kiki_adbd_wait /system/bin/kiki-adb-wait.sh
     seclabel u:r:su:s0
     oneshot
 
-on boot
+on early-init
     start kiki_adbd_wait
