@@ -1,3 +1,3 @@
-# KikiAOSP ADB bring-up: wait for APEX payload, then run TCP adbd.
-on post-fs-data
+# KikiAOSP ADB bring-up: start after init has imported device rc files.
+on property:ro.persistent_properties.ready=true
     exec_background root root -- /system/bin/kiki-adb-wait.sh
