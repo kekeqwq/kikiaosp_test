@@ -4,10 +4,10 @@ on boot
     start adbd
 
 # APEX adbd cannot start until apexd has loaded all updatable configs.
-on property:apexd.status=ready
+on property:apexd.status=activated
     setprop service.adb.tcp.port 5555
     start adbd
 
-on property:init.svc.adbd=stopped && property:apexd.status=ready
+on property:init.svc.adbd=stopped && property:apexd.status=activated
     setprop service.adb.tcp.port 5555
     start adbd
