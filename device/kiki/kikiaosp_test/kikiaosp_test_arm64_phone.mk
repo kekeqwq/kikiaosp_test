@@ -32,6 +32,7 @@ PRODUCT_COPY_FILES += \
     device/kiki/kikiaosp_test/ld.config.kiki.txt:system/etc/ld.config.kiki.txt
 
 # Temporary ART crash diagnostics for Zygote bring-up.
+PRODUCT_COPY_FILES += device/kiki/kikiaosp_test/kiki-adb-wait.sh:system/bin/kiki-adb-wait.sh
 PRODUCT_COPY_FILES += device/kiki/kikiaosp_test/kiki-art-logcat.rc:system/etc/init/kiki-art-logcat.rc
 PRODUCT_COPY_FILES += device/kiki/kikiaosp_test/kiki-minimal-native.rc:system/etc/init/kiki-minimal-native.rc
 PRODUCT_COPY_FILES += device/kiki/kikiaosp_test/kiki-adb.rc:system/etc/init/kiki-adb.rc
