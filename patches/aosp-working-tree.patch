@@ -35,7 +35,7 @@ index 790bac8057..559525f122 100644
  std::string GetBootImageLocationForDefaultBcp(bool no_boot_image,
                                                std::string user_defined_boot_image,
 diff --git a/art/runtime/class_linker.cc b/art/runtime/class_linker.cc
-index 4b3c66770f..0857842314 100644
+index 4b3c66770f..615b658477 100644
 --- a/art/runtime/class_linker.cc
 +++ b/art/runtime/class_linker.cc
 @@ -16,6 +16,8 @@
@@ -55,52 +55,7 @@ index 4b3c66770f..0857842314 100644
    // The class failed to initialize on a previous attempt, so we want to throw
    // a NoClassDefFoundError (v2 2.17.5).  The exception to this rule is if we
    // failed in verification, in which case v2 5.4.1 says we need to re-throw
-@@ -1209,7 +1212,16 @@ void ClassLinker::RunRootClinits(Thread* self) {
-   StackHandleScope<1u> hs(self);
-   Handle<mirror::ObjectArray<mirror::Class>> class_roots = hs.NewHandle(GetClassRoots());
-   for (size_t i = 0; i < static_cast<size_t>(ClassRoot::kMax); ++i) {
--    EnsureRootInitialized(this, self, GetClassRoot(ClassRoot(i), class_roots.Get()));
-+    ObjPtr<mirror::Class> root = GetClassRoot(ClassRoot(i), class_roots.Get());
-+    std::string marker = "ClassLinker::RunRootClinits before root " + std::to_string(i) + " " + root->PrettyClass();
-+    winq_art_kmsg(marker.c_str());
-+    if (i == static_cast<size_t>(ClassRoot::kJavaLangReflectProxy) ||
-+        i == static_cast<size_t>(ClassRoot::kJavaLangInvokeMethodHandlesLookup)) {
-+      winq_art_kmsg("ClassLinker::RunRootClinits skipped deferred invoke/Proxy root for bring-up");
-+      continue;
-+    }
-+    EnsureRootInitialized(this, self, root);
-+    winq_art_kmsg("ClassLinker::RunRootClinits after root");
-   }
- 
-   // Make sure certain well-known classes are initialized. Note that well-known
-@@ -1263,7 +1275,14 @@ void ClassLinker::RunRootClinits(Thread* self) {
-       WellKnownClasses::org_apache_harmony_dalvik_ddmc_DdmServer_dispatch,
-   };
-   for (ArtMethod* method : methods_of_classes_to_initialize) {
-+    std::string marker = "ClassLinker::RunRootClinits before method " + method->GetDeclaringClass()->PrettyClass();
-+    winq_art_kmsg(marker.c_str());
-+    if (method->GetDeclaringClass()->PrettyClass().find("Daemons") != std::string::npos || method->GetDeclaringClass()->PrettyClass().find("FloatingDecimal") != std::string::npos || method->GetDeclaringClass()->PrettyClass().find("AnnotationMember") != std::string::npos) {
-+      winq_art_kmsg("ClassLinker::RunRootClinits skipped deferred optional root method for bring-up");
-+      continue;
-+    }
-     EnsureRootInitialized(this, self, method->GetDeclaringClass());
-+    winq_art_kmsg("ClassLinker::RunRootClinits after method");
-   }
-   ArtField* fields_of_classes_to_initialize[] = {
-       // Ensure classes used by class loaders are initialized (avoid check at runtime).
-@@ -1283,7 +1302,11 @@ void ClassLinker::RunRootClinits(Thread* self) {
-       WellKnownClasses::java_lang_Short_ShortCache_cache,
-   };
-   for (ArtField* field : fields_of_classes_to_initialize) {
-+    std::string marker = "ClassLinker::RunRootClinits before field " + field->GetDeclaringClass()->PrettyClass();
-+    winq_art_kmsg(marker.c_str());
-+    if (field->GetDeclaringClass()->PrettyClass().find("VMRuntime") != std::string::npos) { winq_art_kmsg("ClassLinker::RunRootClinits skipped deferred VMRuntime field for bring-up"); continue; }
-     EnsureRootInitialized(this, self, field->GetDeclaringClass());
-+    winq_art_kmsg("ClassLinker::RunRootClinits after field");
-   }
- }
- 
-@@ -3311,6 +3334,7 @@ ObjPtr<mirror::Class> ClassLinker::FindClass(Thread* self,
+@@ -3311,6 +3314,7 @@ ObjPtr<mirror::Class> ClassLinker::FindClass(Thread* self,
        // The boot class loader is searched ahead of the application class loader, failures are
        // expected and will be wrapped in a ClassNotFoundException. Use the pre-allocated error to
        // trigger the chaining with a proper stack trace.
