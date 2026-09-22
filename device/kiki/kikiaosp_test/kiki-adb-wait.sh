@@ -1,5 +1,5 @@
 #!/system/bin/sh
-while [ ! -x /system/bin/kiki-adbd ]; do
+while [ ! -x /system/bin/adbd ]; do
     sleep 1
 done
 while [ ! -f /system/etc/aconfig/package.map ]; do
