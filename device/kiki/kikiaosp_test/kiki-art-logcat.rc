@@ -1,0 +1,11 @@
+# Temporary KikiAOSP ART startup diagnostics.
+service kiki_art_logcat /system/bin/logcat -b main -b crash -v brief *:E
+    class core
+    user root
+    group log
+    disabled
+    stdio_to_kmsg
+
+on post-fs-data
+    write /dev/kmsg KIKI_ART_LOGCAT_POSTFSDATA
+    start kiki_art_logcat
