@@ -131,15 +131,4 @@ cc_prebuilt_binary {
     name: "kiki-adbd",
     srcs: ["prebuilt/kiki-adbd"],
     installable: true,
-    check_elf_files: false,
-}
-
-cc_prebuilt_library_shared {
-    name: "kiki-adbd-flags",
-    srcs: ["prebuilt/adbd_flags_c_lib.so"],
-    stem: "adbd_flags_c_lib",
-    compile_multilib: "64",
-    installable: true,
-    check_elf_files: false,
-    system_shared_libs: [],
 }
