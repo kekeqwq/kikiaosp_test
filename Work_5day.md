@@ -45,3 +45,15 @@ state and produced no kernel panic or kernel BUG; QEMU was then terminated.
 SurfaceFlinger still reports the previously known EGL/HWC abort loop, so this
 checkpoint claims a stable kernel/ADB transport and black output, not a visible
 desktop or a completed scanout path.
+
+### 2026-09-23 stable display + ADB checkpoint
+
+The previous stable display composition was restored and tested with the rc4 kernel:
+
+- Reused the known-good `kiki-kernel-ramdisk.img` and `kiki-kernel-system.img` composition.
+- Kept `kernel-linux-7.3-rc4-4k`; serial output reaches `WINQ-SF primary connected=1` and `WINQ-SF: after flinger init` without SurfaceFlinger EGL aborts.
+- Injected the reproducible patched `kiki-adbd`, `kiki-adb.rc`, and the virtio-network setup script into a repacked EROFS system image.
+- The stable image has no metadata partition, so the ADB staging script no longer requires aconfig persistence; the unlocked test-target adbd starts directly after configuring `eth0`.
+- Local QEMU test stayed alive for more than 30 seconds, `adb connect 127.0.0.1:5555` reports `device`, and `adb shell id` succeeds.
+
+This is the first combined checkpoint with both a stable black display path and ADB online. The QEMU process was stopped after validation; the repack is reproducible from the stable image tree plus the tracked ADB payload.
