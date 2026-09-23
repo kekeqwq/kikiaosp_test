@@ -86,13 +86,12 @@ Detach with `Ctrl-b d`; reattach with `tmux a -t kikiaosp-build`. Reuse the same
 
 ```bash
 cd ~/projects/kikiaosp_kernel
-git submodule update --init --recursive
 nix build
 mkdir -p ~/kiki-artifacts
 cp -L result/boot/kernel ~/kiki-artifacts/kernel-linux-7.3-rc4-4k
 ```
 
-The flake emits `result/boot/kernel`, `result/boot/vmlinux`, `result/boot/config`, and `result/modules/`. Select the repository revision that builds the verified rc4 4 KiB kernel; check `result/boot/config` and `uname -r` after boot before replacing the frozen test artifact.
+The flake emits `result/boot/kernel`, `result/boot/vmlinux`, `result/boot/config`, and `result/modules/`. The verified rc4 source is `kikiaosp_kernel` commit `101444a3717c1f1251d586572975853ad1bf3aea`. Check `result/boot/config` and `uname -r` after boot before replacing the frozen test artifact.
 
 ## 6. Assemble test assets
 
@@ -116,6 +115,13 @@ Download the frozen base image and ramdisk from the repository's
 section 11. A fresh 8 GiB sparse `userdata-qemu-fresh.img` and 4 MiB `misc.img`
 can be created with `qemu-img create -f raw`; the QEMU command uses `-snapshot`
 so tests do not persist writes to these files.
+
+```bash
+gh release download black-baseline-2026-09-23 \
+  --repo kekeqwq/kikiaosp_test --dir ~/kiki-artifacts
+sha256sum ~/kiki-artifacts/kiki-kernel-system.img \
+  ~/kiki-artifacts/kiki-kernel-ramdisk.img
+```
 
 ## 7. Build upstream QEMU with MSYS2
 

@@ -93,3 +93,9 @@ Final image SHA-256:
 
 The black frame is a minimum active scanout proof, not a SurfaceFlinger-owned
 layer or a desktop. A future client-target frame can replace it through HWC.
+
+The frozen base system and ramdisk are now published as the GitHub release
+`black-baseline-2026-09-23`. GitHub reports both assets uploaded with matching
+SHA-256 digests. This keeps the 491 MB binary out of Git history while making
+the repository's repack script usable on a new development host. The final
+QEMU process remained alive with ADB in `device` state during the release upload.
