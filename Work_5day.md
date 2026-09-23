@@ -1,0 +1,24 @@
+# Work 5 — reproducible baseline and ADB bring-up
+
+Date: 2026-09-23
+
+## Baseline audit
+
+- Device repository: `kikiaosp_test` (`67afeba`)
+- Product: `kikiaosp_test_arm64_phone`
+- Build variant: `trunk_staging userdebug`
+- AOSP integration: 146 tracked paths exactly match `patches/aosp-working-tree.patch`; 5 untracked paths exactly match `overlays/`.
+- Audit command: `scripts/audit-aosp-integration.sh /home/keke/aosp-master`
+- No unrelated AOSP changes were found.
+
+The audit is now a required pre-build gate. The README no longer uses the `eng` lunch target, and the incremental command is `m -j$(nproc) systemimage`; this prevents an accidental variant switch and installclean.
+
+## Incremental build
+
+The TCP-only adbd init change (`67afeba`) rebuilt successfully on 185 in 5 Ninja steps (~30 seconds). It reused the existing Soong graph and did not run a full compile.
+
+## Local QEMU result
+
+The rc4 kernel and rebuilt system image booted to the established stable black-screen baseline. SurfaceFlinger still reaches the known graphics checkpoint. The adbd service starts, but the host sees `127.0.0.1:5555` as `offline`; no `adbd started` line appears after authentication initialization. QEMU was stopped after the test.
+
+Next controlled step: instrument or bypass the adbd authentication initialization path while preserving the TCP-only transport. Do not touch unrelated AOSP projects; every change must enter this repository's patch/overlay set and pass the audit before rebuilding.
