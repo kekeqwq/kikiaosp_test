@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ $# -ne 3 ]]; then
+    echo "usage: $0 BASE_STABLE_SYSTEM.img AOSP_ROOT OUTPUT.img" >&2
+    exit 2
+fi
+base=$(realpath "$1")
+aosp_root=$(realpath "$2")
+output=$(realpath -m "$3")
+repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+device_dir="$repo_dir/device/kiki/kikiaosp_test"
+flags="$aosp_root/out/target/product/kikiaosp_test/system/lib64/adbd_flags_c_lib.so"
+if [[ "$base" == "$output" ]]; then
+    echo 'output must differ from the frozen base image' >&2
+    exit 2
+fi
+test -f "$flags" || { echo "missing $flags" >&2; exit 2; }
+tmp=$(mktemp -d -p "$aosp_root/out" kiki-black.XXXXXX)
+trap 'rm -rf -- "$tmp"' EXIT
+mkdir -p "$tmp/root"
+fsck.erofs --extract="$tmp/root" "$base" >"$tmp/extract.log" 2>&1
+install -m 0755 "$device_dir/prebuilt/kiki-adbd" "$tmp/root/bin/adbd"
+install -m 0755 "$device_dir/kiki-adb-wait.sh" "$tmp/root/bin/kiki-adb-wait.sh"
+install -m 0644 "$device_dir/kiki-adb.rc" "$tmp/root/etc/init/kiki-adb.rc"
+install -m 0644 "$flags" "$tmp/root/lib64/adbd_flags_c_lib.so"
+"$repo_dir/scripts/build-black-scanout.sh" "$tmp/root/bin/kiki_black_scanout"
+install -m 0644 "$device_dir/kiki_black_scanout.rc" "$tmp/root/etc/init/kiki_black_scanout.rc"
+
+# The frozen flat image was built before the device rename. These partition
+# properties feed Android's derived ro.product.* identity and ADB device name.
+props="$tmp/root/system_ext/etc/build.prop"
+sed -i \
+    -e 's/^ro.product.system_ext.brand=.*/ro.product.system_ext.brand=KikiAOSP/' \
+    -e 's/^ro.product.system_ext.device=.*/ro.product.system_ext.device=kikiaosp_test/' \
+    -e 's/^ro.product.system_ext.manufacturer=.*/ro.product.system_ext.manufacturer=Kiki/' \
+    -e 's/^ro.product.system_ext.model=.*/ro.product.system_ext.model=KikiAOSP Test/' \
+    "$props"
+
+mkdir -p -- "$(dirname -- "$output")"
+mkfs.erofs -U 6b696b69-414f-5350-7465-737400000001 --all-root \
+    -zlz4hc -T 0 "$tmp/system.img" "$tmp/root" >"$tmp/repack.log" 2>&1 || {
+    tail -40 "$tmp/repack.log" >&2
+    exit 1
+}
+fsck.erofs "$tmp/system.img" >"$tmp/check.log" 2>&1 || {
+    tail -40 "$tmp/check.log" >&2
+    exit 1
+}
+mv -- "$tmp/system.img" "$output"
+sha256sum "$output"

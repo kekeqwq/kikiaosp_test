@@ -12,7 +12,7 @@ KikiAOSP is a native ARM64 Android 17 test target for Windows ARM hosts. It is a
 - Emulator: upstream QEMU `aarch64-softmmu`, machine `virt`, `virtio-gpu-pci`
 - Android graphics: ranchu HWC3/minigbm and SurfaceFlinger client composition
 
-The frozen reference image intentionally has no Launcher, bootanimation, or UI layer. SurfaceFlinger reaches `primary connected=1` and `after flinger init`; the stable black result therefore means graphics services initialized with no content, not a finished Android desktop.
+The frozen reference image intentionally has no Launcher, bootanimation, or UI layer. SurfaceFlinger reaches `primary connected=1` and `after flinger init`. The active black frame is established by the tracked `kiki_black_scanout` DRM service; compositor startup alone does not make QEMU's display active.
 
 ## Repository layout
 
@@ -89,10 +89,10 @@ cd ~/projects/kikiaosp_kernel
 git submodule update --init --recursive
 nix build
 mkdir -p ~/kiki-artifacts
-cp -L result/boot/kernel ~/kiki-artifacts/kernel-linux-7.3-rc3-4k
+cp -L result/boot/kernel ~/kiki-artifacts/kernel-linux-7.3-rc4-4k
 ```
 
-The flake emits `result/boot/kernel`, `result/boot/vmlinux`, `result/boot/config`, and `result/modules/`. The current flake uses a source submodule; on the next kernel upgrade it should be converted to a fixed-hash Nix tarball/fetcher.
+The flake emits `result/boot/kernel`, `result/boot/vmlinux`, `result/boot/config`, and `result/modules/`. Select the repository revision that builds the verified rc4 4 KiB kernel; check `result/boot/config` and `uname -r` after boot before replacing the frozen test artifact.
 
 ## 6. Assemble test assets
 
@@ -104,12 +104,18 @@ The verified reference layout is:
 kiki-artifacts/
   kernel-linux-7.3-rc4-4k
   kiki-kernel-ramdisk.img
-  kiki-kernel-system-adb.img
+  kiki-kernel-system-black-adb.img
   userdata-qemu-fresh.img
   misc.img
 ```
 
-`kiki-kernel-system-adb.img` is the deliberately minimal black-frame image with the patched TCP-only `adbd` injected. It is repacked from the known-good `kiki-kernel-system.img` EROFS tree; a normal Cuttlefish `system.img` is not equivalent until this product policy and patch set are applied.
+`kiki-kernel-system-black-adb.img` is made by `scripts/repack-black-baseline.sh` from the frozen `kiki-kernel-system.img` EROFS tree. The repack adds the tracked TCP-only `adbd`, a static DRM black-frame helper, and the `kikiaosp_test` product identity. A plain `m systemimage` output is not yet equivalent to this frozen flat-image baseline.
+
+Download the frozen base image and ramdisk from the repository's
+`black-baseline-2026-09-23` GitHub release, then verify the base hash shown in
+section 11. A fresh 8 GiB sparse `userdata-qemu-fresh.img` and 4 MiB `misc.img`
+can be created with `qemu-img create -f raw`; the QEMU command uses `-snapshot`
+so tests do not persist writes to these files.
 
 ## 7. Build upstream QEMU with MSYS2
 
@@ -143,11 +149,10 @@ $qemu = "C:\path\to\qemu\build\qemu-system-aarch64.exe"
 $d = "C:\path\to\kiki-artifacts"
 $append = "earlycon=pl011,0x09000000 console=ttyAMA0 loglevel=8 printk.devkmsg=on audit=0 androidboot.hardware=ranchu androidboot.hardwareegl=angle androidboot.hardware.egl=angle androidboot.hardware.gralloc=minigbm androidboot.hardware.hwcomposer=ranchu androidboot.hardware.vulkan=pastel androidboot.hardware.hwcomposer.mode=client androidboot.hardware.hwcomposer.display_finder_mode=drm androidboot.hardware.guest_hwui_renderer=gles androidboot.debug.renderengine.backend=skiaglthreaded androidboot.selinux=permissive enforcing=0 androidboot.force_normal_boot=1 androidboot.verifiedbootstate=orange androidboot.init_fatal_reboot_target=none binder.devices=binder,hwbinder,vndbinder"
 
-Get-Process qemu-system-aarch64 -ErrorAction SilentlyContinue | Stop-Process -Force
 & $qemu -M virt -accel whpx -cpu host -m 4096 -smp 4 `
   -kernel "$d\kernel-linux-7.3-rc4-4k" -initrd "$d\kiki-kernel-ramdisk.img" `
   -append $append `
-  -drive "if=none,file=$d\kiki-kernel-system-adb.img,format=raw,readonly=on,id=system" -device virtio-blk-pci,drive=system `
+  -drive "if=none,file=$d\kiki-kernel-system-black-adb.img,format=raw,readonly=on,id=system" -device virtio-blk-pci,drive=system `
   -drive "if=none,file=$d\userdata-qemu-fresh.img,format=raw,id=userdata" -device virtio-blk-pci,drive=userdata `
   -drive "if=none,file=$d\misc.img,format=raw,id=misc" -device virtio-blk-pci,drive=misc `
   -netdev user,id=net0,hostfwd=tcp:127.0.0.1:5555-:5555 -device virtio-net-pci,netdev=net0 `
@@ -174,7 +179,7 @@ Linux TCG uses the same devices, replacing `-accel whpx -cpu host` with `-accel 
 
 Proven: ARM64 kernel boot; Android init/Binder/servicemanager/allocator/HWC/SurfaceFlinger startup; DRM connector detection; 1800-second no-panic/no-SIGSEGV/no-core-service-restart run; real SurfaceFlinger client composition without synthetic green frames.
 
-Not yet claimed: a visible Android UI or a finished real-layer scanout path. The current required baseline is an active, stable black output: SurfaceFlinger reaches `primary connected=1` and `after flinger init` without the QEMU `Display output is not active` state. TCP ADB is also proven with `adb connect 127.0.0.1:5555`, `adb shell id`, and `adb shell getprop`. The next controlled step is to inspect SurfaceFlinger through ADB before changing scanout/present.
+Not yet claimed: a visible Android UI or a finished real-layer scanout path. The current minimal baseline commits one black DRM framebuffer, removes QEMU's `Display output is not active` placeholder, and keeps ADB online with `ro.product.device=kikiaosp_test`. The black frame is a temporary product bootstrap service; it drops DRM master after modeset so a future SurfaceFlinger client target can take over. The next controlled step is to inspect SurfaceFlinger through ADB and submit a real Android layer.
 
 ## 10. Development history
 
@@ -197,18 +202,35 @@ Before any build, run the integration audit from the device repository:
 
 The audit verifies that every AOSP modification is represented by this repository's patch/overlay set and that the selected product is the fixed `userdebug` target. It fails closed if an unrelated AOSP change or an `eng`/other product configuration is present, preventing an accidental configuration switch and installclean.
 
-## 11. Repack the stable system with ADB
+## 11. Repack the active black baseline
 
-The stable display baseline is based on the previously validated EROFS system
-tree. Extract that image with `fsck.erofs`, copy the tracked `prebuilt/kiki-adbd`,
-`kiki-adb.rc`, and `kiki-adb-wait.sh` into `bin/` and `etc/init/`, copy the
-matching `adbd_flags_c_lib.so` from the current AOSP `system/lib64`, then run:
+The frozen base image is published as a release asset and has SHA-256
+`ad60b844b0a23c835aaf129f548b0fff03f1bf01588cb6645c9b3a0f0f6b20d7`.
+Keep `kiki-kernel-system.img` and `kiki-kernel-ramdisk.img` from the verified
+asset set. The independent repository contains the source and repack recipe;
+the 491 MB base image is hosted as a release asset rather than Git history.
+
+With `erofs-utils` and an ARM64 Linux cross compiler available on the Linux
+build host, run:
 
 ```bash
-mkfs.erofs -zlz4hc -T 0 kiki-kernel-system-adb.img stable-system/
+cd ~/projects/kikiaosp_test
+scripts/repack-black-baseline.sh \
+  ~/kiki-artifacts/kiki-kernel-system.img \
+  ~/aosp-master \
+  ~/kiki-artifacts/kiki-kernel-system-black-adb.img
 ```
 
-Do not add product/vendor disks to this minimal baseline unless a test needs
-them: the known-good composition is what prevents the SurfaceFlinger EGL abort
-loop. The ADB staging script does not require a metadata partition; it configures
-`eth0` and starts the unlocked test-target daemon directly.
+Set `CROSS_CC=/path/to/aarch64-unknown-linux-gnu-gcc` if the compiler is not
+on `PATH`. The script extracts the EROFS base, installs the tracked ADB and DRM
+sources, copies `adbd_flags_c_lib.so` from the matching AOSP build, fixes the
+old image's `vsoc_arm64` product property, checks the repacked filesystem, and
+prints its SHA-256. The tested output hash is
+`c0c7f7f3737052dd4f53f8d3892d0278aa4cb2f0f32ec12f07a3aebde2054cc7`.
+Two independent repacks produced byte-identical images with this hash.
+
+On Windows, `scripts/run-black-baseline.ps1 -Qemu <qemu-system-aarch64.exe>
+-Assets <kiki-artifacts>` launches the exact tested device order and QEMU
+options. The window remains open until you close QEMU. After `adb connect
+127.0.0.1:5555`, verify `adb shell getprop ro.product.device` returns
+`kikiaosp_test`. The serial log must contain `KIKI-BLACK scanout active`.

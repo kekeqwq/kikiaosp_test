@@ -57,3 +57,39 @@ The previous stable display composition was restored and tested with the rc4 ker
 - Local QEMU test stayed alive for more than 30 seconds, `adb connect 127.0.0.1:5555` reports `device`, and `adb shell id` succeeds.
 
 This is the first combined checkpoint with both a stable black display path and ADB online. The QEMU process was stopped after validation; the repack is reproducible from the stable image tree plus the tracked ADB payload.
+
+### 2026-09-23 correction: active scanout and device identity
+
+The previous checkpoint overstated the display result. The user still saw
+QEMU's `Display output is not active`; `WINQ-SF primary connected=1` only
+proved that SurfaceFlinger discovered a display. The frozen product has no UI
+layer and its HWC did not submit a first frame. ADB also reported the old
+`vsoc_arm64` identity from the frozen image, and the host did not retain a TCP
+device across every QEMU restart.
+
+Added `device/kiki/kikiaosp_test/kiki_black_scanout.c` and its init service.
+It is a static ARM64 Linux DRM/KMS helper, triggered after HWC announces
+`sys.kiki.hwc.ready=1`. It creates a zeroed dumb buffer, sets the connector's
+CRTC once, drops DRM master, and holds the framebuffer alive. It has no libc
+or Android graphics library dependency. The first attempt failed while
+fetching DRM resource IDs; after supplying all ioctl output arrays, serial
+reported `KIKI-BLACK scanout active` on each cold boot.
+
+The tested QEMU window was captured directly through the Windows window API:
+its display area is pure black and contains no `Display output is not active`
+text. The QEMU monitor also exported a black frame. The final deterministic
+repack was cold booted again and showed the same actual window result.
+`adb devices -l` reported `device ... device:kikiaosp_test`, `adb shell id`
+succeeded, and `ro.product.device` returned `kikiaosp_test`. The kernel remains
+`7.3.0-rc4-4k`. The QEMU window was left open for the user's observation.
+
+The tracked `scripts/repack-black-baseline.sh` takes the frozen EROFS base,
+the matching AOSP `adbd_flags_c_lib.so`, and the repository's ADB and DRM
+sources. It also fixes the old `vsoc_arm64` partition properties. Two clean
+repack runs produced byte-identical EROFS images. Source base SHA-256:
+`ad60b844b0a23c835aaf129f548b0fff03f1bf01588cb6645c9b3a0f0f6b20d7`.
+Final image SHA-256:
+`c0c7f7f3737052dd4f53f8d3892d0278aa4cb2f0f32ec12f07a3aebde2054cc7`.
+
+The black frame is a minimum active scanout proof, not a SurfaceFlinger-owned
+layer or a desktop. A future client-target frame can replace it through HWC.
