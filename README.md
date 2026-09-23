@@ -75,9 +75,9 @@ The script installs `device/kiki/kikiaosp_test`, applies the graphics/runtime pa
 ```bash
 cd ~/aosp-master
 source build/envsetup.sh
-lunch kikiaosp_test_arm64_phone-trunk_staging-eng
+lunch kikiaosp_test_arm64_phone-trunk_staging-userdebug
 tmux new -s kikiaosp-build
-m -j"$(nproc)"
+m -j"$(nproc)" systemimage
 ```
 
 Detach with `Ctrl-b d`; reattach with `tmux a -t kikiaosp-build`. Reuse the same `out/` directory for incremental builds. Main output is `out/target/product/kikiaosp_test/` containing `system.img`, `vendor.img`, `product.img`, `system_ext.img`, `odm.img`, and vendor-boot/ramdisk outputs.
@@ -188,3 +188,10 @@ git push -u origin feature/<name>
 
 Every reproducible checkpoint records the AOSP manifest revision, kernel commit, image SHA-256, QEMU arguments, serial conclusion, and known limitations in `Work_5day.md`.
 
+Before any build, run the integration audit from the device repository:
+
+```bash
+./scripts/audit-aosp-integration.sh ~/aosp-master
+```
+
+The audit verifies that every AOSP modification is represented by this repository's patch/overlay set and that the selected product is the fixed `userdebug` target. It fails closed if an unrelated AOSP change or an `eng`/other product configuration is present, preventing an accidental configuration switch and installclean.
