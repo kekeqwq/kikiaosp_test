@@ -42,7 +42,7 @@ $args = @(
     '-monitor',"tcp:127.0.0.1:${MonitorPort},server,nowait",
     '-serial',("file:$serialLog"),'-snapshot'
 )
-$process = Start-Process -FilePath $qemuExe -ArgumentList $args -RedirectStandardError $stderrLog -PassThru
+$process = Start-Process -FilePath $qemuExe -ArgumentList $args -WindowStyle Hidden -RedirectStandardError $stderrLog -PassThru
 "QEMU PID=$($process.Id)"
 "Serial log: $serialLog"
 "ADB: adb connect 127.0.0.1:${AdbPort}"
