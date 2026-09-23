@@ -8,7 +8,7 @@ KikiAOSP is a native ARM64 Android 17 test target for Windows ARM hosts. It is a
 - Product: `kikiaosp_test_arm64_phone`
 - System identity: `KikiAOSP`
 - AOSP baseline: Android 17 development `master` manifest
-- Kernel: Linux `v7.3-rc3`, 4 KiB pages, from https://github.com/kekeqwq/kikiaosp_kernel
+- Kernel: Linux `v7.3-rc4`, 4 KiB pages, from https://github.com/kekeqwq/kikiaosp_kernel
 - Emulator: upstream QEMU `aarch64-softmmu`, machine `virt`, `virtio-gpu-pci`
 - Android graphics: ranchu HWC3/minigbm and SurfaceFlinger client composition
 
@@ -102,14 +102,14 @@ The verified reference layout is:
 
 ```
 kiki-artifacts/
-  kernel-linux-7.3-rc3-4k
+  kernel-linux-7.3-rc4-4k
   kiki-kernel-ramdisk.img
-  kiki-kernel-system.img
+  kiki-kernel-system-adb.img
   userdata-qemu-fresh.img
   misc.img
 ```
 
-`kiki-kernel-system.img` is the deliberately minimal black-frame image used for the 1800-second stability test. A normal Cuttlefish `system.img` is not equivalent until this product policy and patch set are applied and the image is repacked.
+`kiki-kernel-system-adb.img` is the deliberately minimal black-frame image with the patched TCP-only `adbd` injected. It is repacked from the known-good `kiki-kernel-system.img` EROFS tree; a normal Cuttlefish `system.img` is not equivalent until this product policy and patch set are applied.
 
 ## 7. Build upstream QEMU with MSYS2
 
@@ -145,11 +145,12 @@ $append = "earlycon=pl011,0x09000000 console=ttyAMA0 loglevel=8 printk.devkmsg=o
 
 Get-Process qemu-system-aarch64 -ErrorAction SilentlyContinue | Stop-Process -Force
 & $qemu -M virt -accel whpx -cpu host -m 4096 -smp 4 `
-  -kernel "$d\kernel-linux-7.3-rc3-4k" -initrd "$d\kiki-kernel-ramdisk.img" `
+  -kernel "$d\kernel-linux-7.3-rc4-4k" -initrd "$d\kiki-kernel-ramdisk.img" `
   -append $append `
-  -drive "if=none,file=$d\kiki-kernel-system.img,format=raw,readonly=on,id=system" -device virtio-blk-pci,drive=system `
+  -drive "if=none,file=$d\kiki-kernel-system-adb.img,format=raw,readonly=on,id=system" -device virtio-blk-pci,drive=system `
   -drive "if=none,file=$d\userdata-qemu-fresh.img,format=raw,id=userdata" -device virtio-blk-pci,drive=userdata `
   -drive "if=none,file=$d\misc.img,format=raw,id=misc" -device virtio-blk-pci,drive=misc `
+  -netdev user,id=net0,hostfwd=tcp:127.0.0.1:5555-:5555 -device virtio-net-pci,netdev=net0 `
   -device virtio-gpu-pci,hostmem=256M,xres=1080,yres=2400 -display gtk,gl=off `
   -serial "file:$d\qemu-kikiaosp.log" -snapshot
 ```
@@ -173,7 +174,7 @@ Linux TCG uses the same devices, replacing `-accel whpx -cpu host` with `-accel 
 
 Proven: ARM64 kernel boot; Android init/Binder/servicemanager/allocator/HWC/SurfaceFlinger startup; DRM connector detection; 1800-second no-panic/no-SIGSEGV/no-core-service-restart run; real SurfaceFlinger client composition without synthetic green frames.
 
-Not yet claimed: a visible Android UI, a finished real-layer scanout path, or ADB access. The next controlled step is to enable `adbd`, run `adb shell getprop`, `ps`, and `dumpsys SurfaceFlinger`, then submit one minimal test Surface. Only if that Surface fails should scanout/present be changed.
+Not yet claimed: a visible Android UI or a finished real-layer scanout path. The current required baseline is an active, stable black output: SurfaceFlinger reaches `primary connected=1` and `after flinger init` without the QEMU `Display output is not active` state. TCP ADB is also proven with `adb connect 127.0.0.1:5555`, `adb shell id`, and `adb shell getprop`. The next controlled step is to inspect SurfaceFlinger through ADB before changing scanout/present.
 
 ## 10. Development history
 
@@ -195,3 +196,19 @@ Before any build, run the integration audit from the device repository:
 ```
 
 The audit verifies that every AOSP modification is represented by this repository's patch/overlay set and that the selected product is the fixed `userdebug` target. It fails closed if an unrelated AOSP change or an `eng`/other product configuration is present, preventing an accidental configuration switch and installclean.
+
+## 11. Repack the stable system with ADB
+
+The stable display baseline is based on the previously validated EROFS system
+tree. Extract that image with `fsck.erofs`, copy the tracked `prebuilt/kiki-adbd`,
+`kiki-adb.rc`, and `kiki-adb-wait.sh` into `bin/` and `etc/init/`, copy the
+matching `adbd_flags_c_lib.so` from the current AOSP `system/lib64`, then run:
+
+```bash
+mkfs.erofs -zlz4hc -T 0 kiki-kernel-system-adb.img stable-system/
+```
+
+Do not add product/vendor disks to this minimal baseline unless a test needs
+them: the known-good composition is what prevents the SurfaceFlinger EGL abort
+loop. The ADB staging script does not require a metadata partition; it configures
+`eth0` and starts the unlocked test-target daemon directly.
