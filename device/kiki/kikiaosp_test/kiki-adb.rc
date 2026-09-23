@@ -8,7 +8,6 @@ service kiki_adbd_stage /system/bin/kiki-adb-wait.sh
 
 service kiki_adbd /system/bin/adbd --root_seclabel=u:r:su:s0
     class core
-    socket adbd seqpacket 660 system system
     disabled
     seclabel u:r:adbd:s0
     user root
