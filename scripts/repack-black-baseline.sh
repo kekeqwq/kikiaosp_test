@@ -1,21 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 3 ]]; then
-    echo "usage: $0 BASE_STABLE_SYSTEM.img AOSP_ROOT OUTPUT.img" >&2
+if [[ $# -lt 3 || $# -gt 4 ]]; then
+    echo "usage: $0 BASE_STABLE_SYSTEM.img AOSP_ROOT OUTPUT.img [black|test-ui]" >&2
     exit 2
 fi
 base=$(realpath "$1")
 aosp_root=$(realpath "$2")
 output=$(realpath -m "$3")
+mode=${4:-black}
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 device_dir="$repo_dir/device/kiki/kikiaosp_test"
 flags="$aosp_root/out/target/product/kikiaosp_test/system/lib64/adbd_flags_c_lib.so"
+case "$mode" in
+    black) scanout_binary=kiki_black_scanout; scanout_rc=kiki_black_scanout.rc; scanout_variant=black ;;
+    test-ui) scanout_binary=kiki_test_scanout; scanout_rc=kiki_test_scanout.rc; scanout_variant=test-ui ;;
+    *) echo "unknown repack mode: $mode" >&2; exit 2 ;;
+esac
 if [[ "$base" == "$output" ]]; then
     echo 'output must differ from the frozen base image' >&2
     exit 2
 fi
 test -f "$flags" || { echo "missing $flags" >&2; exit 2; }
+if [[ "$mode" == test-ui ]]; then
+    test -f "$device_dir/kiki_test_scanout.rc" || { echo "missing kiki_test_scanout.rc" >&2; exit 2; }
+fi
 tmp=$(mktemp -d -p "$aosp_root/out" kiki-black.XXXXXX)
 trap 'rm -rf -- "$tmp"' EXIT
 mkdir -p "$tmp/root"
@@ -24,8 +33,11 @@ install -m 0755 "$device_dir/prebuilt/kiki-adbd" "$tmp/root/bin/adbd"
 install -m 0755 "$device_dir/kiki-adb-wait.sh" "$tmp/root/bin/kiki-adb-wait.sh"
 install -m 0644 "$device_dir/kiki-adb.rc" "$tmp/root/etc/init/kiki-adb.rc"
 install -m 0644 "$flags" "$tmp/root/lib64/adbd_flags_c_lib.so"
-"$repo_dir/scripts/build-black-scanout.sh" "$tmp/root/bin/kiki_black_scanout"
-install -m 0644 "$device_dir/kiki_black_scanout.rc" "$tmp/root/etc/init/kiki_black_scanout.rc"
+"$repo_dir/scripts/build-black-scanout.sh" "$tmp/root/bin/$scanout_binary" "$scanout_variant"
+install -m 0644 "$device_dir/$scanout_rc" "$tmp/root/etc/init/$scanout_rc"
+if [[ "$mode" == test-ui ]]; then
+    install -m 0644 "$device_dir/kiki_test_scanout.rc" "$tmp/root/etc/init/kiki_test_scanout.rc"
+fi
 
 # The frozen flat image was built before the device rename. These partition
 # properties feed Android's derived ro.product.* identity and ADB device name.

@@ -114,3 +114,38 @@ device reported `ro.product.device=kikiaosp_test`,
 `init.svc.kiki_black_scanout=running`, and kernel `7.3.0-rc4-4k`; shell commands
 including `id` and `uname -r` succeeded. The QEMU process was left running for
 the user to inspect. No claim is made here about a half-hour soak test.
+
+## 2026-09-23 — animated native DRM/KMS `TEST OK` proof
+
+Added an optional `test-ui` variant to `scripts/build-black-scanout.sh` and
+`scripts/repack-black-baseline.sh`, with `device/kiki/kikiaosp_test/kiki_test_scanout.rc`.
+The tiny static ARM64 helper is launched by Android init after
+`sys.kiki.hwc.ready=1`. It selects the 640x480 KMS mode, draws a white 5x7
+`TEST OK` bitmap, then moves a colored square and alternates orange/green at
+500 ms intervals. It uses no libc, Activity, launcher, SurfaceComposer client,
+or additional Android framework services. The original black-baseline mode
+remains the default and is not modified.
+
+The first update attempt could draw only one frame: `DRM_IOCTL_MODE_DIRTYFB`
+for the next frame failed after the helper released DRM master. In the
+test-only variant it now retains DRM master while submitting full-frame dirty
+updates. The AOSP base source was not edited; `scripts/audit-aosp-integration.sh`
+reports a clean and reproducible integration after syncing the device-tree
+overlay. Failed SurfaceComposer/Gralloc client experiments were removed from
+the product definition; those experiments did not present a frame.
+
+Reproduced and booted image SHA-256:
+`1b09adb50bc909ed67af614e8726f8171dd5072c9b8cad49083f8d0abb0f6105`.
+Two QEMU monitor captures show the same complete `TEST OK` text with the
+animated square at different positions/colors. Their PPM SHA-256 values are
+`215e3813a4ed46c09025a948f11a182df6d3e839dd45bc53dcb08b06482c2443` and
+`ad92ae6d46616cf011db15a928800e7695170ed169304fe1b09d2ba81c46ce08`.
+The guest log records `initial dirtyfb submitted` and
+`second frame dirtyfb submitted`; ADB remains `device` and the guest kernel
+remains `7.3.0-rc4-4k`.
+
+This establishes Android init userspace -> DRM/KMS -> QEMU scanout and proves
+at least two changing output frames. It does not establish a
+SurfaceFlinger/HWC-presented Android UI: the test helper deliberately owns DRM
+master, and the known HWC present path remains a separate follow-up. QEMU was
+left running with the animated test image for live observation.

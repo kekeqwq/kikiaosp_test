@@ -28,6 +28,81 @@ static void sleep_seconds(long seconds) {
     syscall6(__NR_nanosleep, (long)&duration, 0, 0, 0, 0, 0);
 }
 
+#ifdef KIKI_TEST_UI
+static void sleep_half_second(void) {
+    struct { long tv_sec, tv_nsec; } duration = {0, 500000000};
+    syscall6(__NR_nanosleep, (long)&duration, 0, 0, 0, 0, 0);
+}
+
+static uint8_t glyph_row(char c, int row) {
+    static const uint8_t glyphs[][7] = {
+        {14, 4, 4, 4, 4, 4, 4},       // T
+        {31, 16, 16, 30, 16, 16, 31}, // E
+        {15, 16, 16, 14, 1, 1, 30},   // S
+        {0, 0, 0, 0, 0, 0, 0},        // space
+        {14, 17, 17, 17, 17, 17, 14}, // O
+        {17, 18, 20, 24, 20, 18, 17}, // K
+    };
+    int index = c == 'T' ? 0 : c == 'E' ? 1 : c == 'S' ? 2 :
+                c == ' ' ? 3 : c == 'O' ? 4 : c == 'K' ? 5 : 3;
+    return glyphs[index][row];
+}
+
+static void put_pixel(volatile uint8_t *pixels, uint32_t pitch, uint32_t width,
+                      uint32_t height, int x, int y, uint32_t color) {
+    if (x < 0 || y < 0 || (uint32_t)x >= width || (uint32_t)y >= height) return;
+    volatile uint32_t *pixel = (volatile uint32_t *)(pixels + (uint64_t)y * pitch + x * 4);
+    *pixel = color;
+}
+
+static int box_x(uint32_t width, int box, uint64_t frame) {
+    const int travel = (int)width - box;
+    const int phase = (int)(frame % 32);
+    return phase < 16 ? phase * travel / 16 : (32 - phase) * travel / 16;
+}
+
+static int box_y(uint32_t height) {
+    const int scale = (int)(height / 48);
+    return (int)height / 3 + 7 * scale + (int)height / 30;
+}
+
+static void draw_box(volatile uint8_t *pixels, uint32_t pitch, uint32_t width,
+                     uint32_t height, uint64_t frame, uint32_t color) {
+    const int box = (int)height / 8;
+    const int x = box_x(width, box, frame);
+    const int y = box_y(height);
+    for (int py = y; py < y + box; ++py)
+        for (int px = x; px < x + box; ++px)
+            put_pixel(pixels, pitch, width, height, px, py, color);
+}
+
+static void draw_test_frame(volatile uint8_t *pixels, uint64_t size, uint32_t pitch,
+                            uint32_t width, uint32_t height, uint64_t frame) {
+    for (uint64_t i = 0; i < size; ++i) pixels[i] = 0;
+    const int scale = (int)(height / 48);
+    const char text[] = "TEST OK";
+    const int origin_x = ((int)width - 7 * 6 * scale) / 2;
+    const int origin_y = (int)height / 3;
+    for (int ch = 0; text[ch]; ++ch) {
+        for (int row = 0; row < 7; ++row) {
+            uint8_t bits = glyph_row(text[ch], row);
+            for (int col = 0; col < 5; ++col) {
+                if ((bits & (1u << (4 - col))) == 0) continue;
+                for (int dy = 0; dy < scale; ++dy) {
+                    for (int dx = 0; dx < scale; ++dx) {
+                        put_pixel(pixels, pitch, width, height,
+                                  origin_x + (ch * 6 + col) * scale + dx,
+                                  origin_y + row * scale + dy, 0xffffffffu);
+                    }
+                }
+            }
+        }
+    }
+    const uint32_t color = (frame & 1) ? 0xff20e020u : 0xffff8020u;
+    draw_box(pixels, pitch, width, height, frame, color);
+}
+#endif
+
 static void log_message(const char *message) {
     const char *p = message;
     while (*p) ++p;
@@ -87,7 +162,8 @@ static int run(void) {
             connector.count_modes == 0) continue;
         mode = modes[0];
         for (uint32_t j = 0; j < connector.count_modes; ++j) {
-            if (modes[j].hdisplay == 1080 && modes[j].vdisplay == 2400) {
+            // Keep KMS aligned with the HWC mode advertised by Ranchu.
+            if (modes[j].hdisplay == 640 && modes[j].vdisplay == 480) {
                 mode = modes[j]; break;
             }
         }
@@ -111,8 +187,12 @@ static int run(void) {
         log_message("KIKI-BLACK mmap failed\n"); return 8;
     }
     volatile uint8_t *bytes = (volatile uint8_t *)pixels;
+#ifdef KIKI_TEST_UI
+    draw_test_frame(bytes, create.size, create.pitch, mode.hdisplay, mode.vdisplay, 0);
+#else
     for (uint64_t i = 0; i < create.size; ++i) bytes[i] = 0;
     syscall6(__NR_munmap, pixels, create.size, 0, 0, 0, 0);
+#endif
 
     struct drm_mode_fb_cmd framebuffer = {
         .width = mode.hdisplay, .height = mode.vdisplay,
@@ -132,9 +212,36 @@ static int run(void) {
     if (drm_ioctl(fd, DRM_IOCTL_MODE_SETCRTC, &crtc) < 0) {
         log_message("KIKI-BLACK setcrtc failed\n"); return 10;
     }
-    log_message("KIKI-BLACK scanout active\n");
+#ifdef KIKI_TEST_UI
+    struct drm_mode_fb_dirty_cmd dirty = {.fb_id = framebuffer.fb_id};
+    long dirty_result = drm_ioctl(fd, DRM_IOCTL_MODE_DIRTYFB, &dirty);
+    log_message(dirty_result < 0 ? "KIKI-TEST-DRM initial dirtyfb failed\n"
+                                 : "KIKI-TEST-DRM initial dirtyfb submitted\n");
+#endif
+    log_message(mode.hdisplay == 640 && mode.vdisplay == 480
+#ifdef KIKI_TEST_UI
+                    ? "KIKI-TEST-DRM mode 640x480 scanout frame=0\n"
+                    : "KIKI-TEST-DRM fallback mode scanout frame=0\n");
+#else
+                    ? "KIKI-BLACK mode 640x480 scanout active\n"
+                    : "KIKI-BLACK fallback mode scanout active\n");
+#endif
+#ifndef KIKI_TEST_UI
     drm_ioctl(fd, DRM_IOCTL_DROP_MASTER, 0);
+#endif
+#ifdef KIKI_TEST_UI
+    for (uint64_t frame = 1;; ++frame) {
+        sleep_half_second();
+        draw_test_frame(bytes, create.size, create.pitch, mode.hdisplay,
+                        mode.vdisplay, frame);
+        dirty_result = drm_ioctl(fd, DRM_IOCTL_MODE_DIRTYFB, &dirty);
+        if (frame == 1)
+            log_message(dirty_result < 0 ? "KIKI-TEST-DRM second frame dirtyfb failed\n"
+                                         : "KIKI-TEST-DRM second frame dirtyfb submitted\n");
+    }
+#else
     for (;;) sleep_seconds(3600);
+#endif
 }
 
 void _start(void) {
