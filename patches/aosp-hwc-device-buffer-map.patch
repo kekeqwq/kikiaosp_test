@@ -55,11 +55,18 @@
  };
  
  // Returns a color matrix that can be used with libyuv by converting values
-@@ -1045,19 +1049,52 @@ HWC3::Error GuestFrameComposer::composeLayerInto(
+@@ -1038,6 +1038,7 @@ HWC3::Error GuestFrameComposer::composeLayerInto(
+     BufferSpec srcLayerSpec;
+ 
+     std::optional<GrallocBuffer> srcBufferOpt;
+     std::optional<GrallocBufferView> srcBufferViewOpt;
++    ScopedDmaBufMapping srcBufferMapping;
+ 
+     const auto srcLayerCompositionType = srcLayer->getCompositionType();
+@@ -1045,19 +1050,51 @@ HWC3::Error GuestFrameComposer::composeLayerInto(
          }
          GrallocBuffer& srcBuffer = *srcBufferOpt;
  
-+        ScopedDmaBufMapping srcBufferMapping;
 +        bool haveSourceSpec = false;
          srcBufferViewOpt = srcBuffer.Lock();
 -        if (!srcBufferViewOpt) {

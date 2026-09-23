@@ -302,7 +302,7 @@ Date: 2026-09-23
   stability run, high-refresh behavior, and ordinary app-buffer/client-target
   composition are still unverified.
 
-## 2026-09-23 — ordinary GraphicBuffer prototype (build pending)
+## 2026-09-23 — ordinary GraphicBuffer prototype (initial build-pending checkpoint)
 
 The next milestone is to replace only the moving square's synthetic
 `SOLID_COLOR` effect layer with a normal buffer-backed SurfaceFlinger layer;
@@ -346,3 +346,49 @@ The previously tested v3 `TEST OK` image is untouched and remains the visual
 baseline. The current local Windows QEMU still runs that image. This prototype
 has not been repacked, booted, or confirmed on screen; its source and patch
 remain unvalidated until a successful build and QEMU test.
+
+## 2026-09-24 — GraphicBuffer lifetime fix and Windows-host validation
+
+The first GraphicBuffer image built and booted, but the hwcomposer crashed on
+the first buffer-backed layer. The tombstone pointed to `ARGBBlendRow_NEON`
+from `GuestFrameComposer::composeLayerInto`. The fallback's
+`ScopedDmaBufMapping` had been scoped inside the `DEVICE` branch even though
+`srcLayerSpec.buffer` was consumed later by blending; leaving the branch
+unmapped the source before the blend. Moved the mapping owner to function
+scope so its lifetime spans all composition operations. The fix is recorded
+in `patches/aosp-hwc-device-buffer-map.patch`.
+
+On VM185, the incremental rebuild of the composer took 3 Ninja actions and
+about 15 seconds. The repacked image is
+`/home/keke/kiki-kernel-system-sf-guest-hwc3-graphicbuffer-lifetimefix.img`
+(SHA-256 `9313cedf3e35126d1a04d9264c3638b312792fb940bcb0ba909fcfc98568e8d7`).
+It was tested on host 106, the local Windows ARM machine, using upstream QEMU
+with WHPX, not on VM185.
+
+Runtime checks on host 106: ADB connected to `kikiaosp_test`; SurfaceFlinger
+and hwcomposer remained `running`, `sys.kiki.hwc.ready=1`, and the UI continued
+to commit frames. The QEMU serial log reached frame 2277 (about 1,218 guest
+seconds); there was no hwcomposer crash during this run. Ten direct QEMU
+monitor PPM captures taken about 500 ms apart each contain the green text
+pixels, with the square changing position/color. Two decoded PNG samples are
+preserved at:
+
+- `docs/evidence/graphicbuffer-lifetimefix-frame-02-verified.png` — SHA-256
+  `86d7e6be829ee54af2b019880ce2ab635031b6f12f7d9c386ab8dfdedbd7b42e`;
+  source PPM SHA-256 `cdaa6b68bb7f5b9a7e6af7ea9ef9140751893561aaea76b8de47c868e00f67cc`.
+- `docs/evidence/graphicbuffer-lifetimefix-frame-07-verified.png` — SHA-256
+  `78a9be76cd1655c1ea7dc116b920a6109cb9065276c908ac2ad93e36fcc33979`;
+  source PPM SHA-256 `678406519929349d192b7e7fd9eaacf978f6b70640ccb2cbbf36bd4a63d99060`.
+
+Evidence correction: earlier same-number PNG and PPM files were not a matched
+conversion pair, which made some PNG previews look like text had disappeared.
+For this validation, PNGs were regenerated from their PPM sources with FFmpeg
+and the raw PPM text region was checked directly. Do not infer flicker from
+the older mismatched pairs.
+
+This proves the small native SurfaceFlinger `GraphicBuffer` layer can reach
+the guest HWC and appear alongside the static test text over multiple
+different frames. It is not yet a general application-buffer/client-target
+test, a 30-minute soak, a high-refresh validation, or a claim of production
+stability. The QEMU test process was shut down after the run; its host-side
+serial and stderr logs remain in `aosp/windows-arm64-test/` on host 106.
