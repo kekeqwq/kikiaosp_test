@@ -14,10 +14,17 @@ device_dir="$repo_dir/device/kiki/kikiaosp_test"
 flags="$aosp_root/out/target/product/kikiaosp_test/system/lib64/adbd_flags_c_lib.so"
 test_ui="$aosp_root/out/target/product/kikiaosp_test/system/bin/kiki_test_ui"
 surfaceflinger="$aosp_root/out/target/product/kikiaosp_test/system/bin/surfaceflinger"
-hwc_apex="$aosp_root/out/soong/.intermediates/device/generic/goldfish/hals/hwc3/com.android.hardware.graphics.composer.ranchu/android_common_com.android.hardware.graphics.composer.ranchu/com.android.hardware.graphics.composer.ranchu.apex"
+tombstoned="$aosp_root/out/target/product/kikiaosp_test/system/bin/tombstoned"
+runtime_apex="$aosp_root/out/target/product/kikiaosp_test/system/apex/com.android.runtime.apex"
+crash_dump_policy="$aosp_root/out/target/product/kikiaosp_test/system/etc/seccomp_policy/crash_dump.arm64.policy"
+tombstoned_rc="$aosp_root/out/target/product/kikiaosp_test/system/etc/init/tombstoned.rc"
+hwc_service="$aosp_root/out/soong/.intermediates/device/generic/goldfish/hals/hwc3/android.hardware.graphics.composer3-service.ranchu/android_vendor_arm64_armv8-a/android.hardware.graphics.composer3-service.ranchu"
+framework_lib_dir="$aosp_root/out/target/product/kikiaosp_test/system/lib64"
 case "$mode" in
     black) scanout_binary=kiki_black_scanout; scanout_rc=kiki_black_scanout.rc; scanout_variant=black ;;
-    surface-test) scanout_binary=kiki_black_scanout; scanout_rc=kiki_black_scanout.rc; scanout_variant=black ;;
+    # SurfaceFlinger/HWC must own DRM/KMS. Never start the frozen black scanout
+    # owner in this mode; it retains DRM master and blocks HWC presentation.
+    surface-test) scanout_binary=""; scanout_rc=""; scanout_variant="" ;;
     test-ui) scanout_binary=kiki_test_scanout; scanout_rc=kiki_test_scanout.rc; scanout_variant=test-ui ;;
     *) echo "unknown repack mode: $mode" >&2; exit 2 ;;
 esac
@@ -32,7 +39,12 @@ fi
 if [[ "$mode" == surface-test ]]; then
     test -f "$test_ui" || { echo "missing $test_ui; build m kiki_test_ui first" >&2; exit 2; }
     test -f "$surfaceflinger" || { echo "missing $surfaceflinger; build m surfaceflinger first" >&2; exit 2; }
-    test -f "$hwc_apex" || { echo "missing $hwc_apex; build the Ranchu composer APEX first" >&2; exit 2; }
+    test -f "$tombstoned" || { echo "missing $tombstoned; build m tombstoned first" >&2; exit 2; }
+    test -f "$runtime_apex" || { echo "missing $runtime_apex; build the com.android.runtime APEX first" >&2; exit 2; }
+    test -f "$crash_dump_policy" || { echo "missing $crash_dump_policy; build m crash_dump first" >&2; exit 2; }
+    test -f "$tombstoned_rc" || { echo "missing $tombstoned_rc; build m tombstoned first" >&2; exit 2; }
+    test -f "$hwc_service" || { echo "missing $hwc_service; build the active Ranchu HWC service first" >&2; exit 2; }
+    test -d "$framework_lib_dir" || { echo "missing matching framework library directory $framework_lib_dir" >&2; exit 2; }
 fi
 tmp=$(mktemp -d -p "$aosp_root/out" kiki-black.XXXXXX)
 trap 'rm -rf -- "$tmp"' EXIT
@@ -42,15 +54,31 @@ install -m 0755 "$device_dir/prebuilt/kiki-adbd" "$tmp/root/bin/adbd"
 install -m 0755 "$device_dir/kiki-adb-wait.sh" "$tmp/root/bin/kiki-adb-wait.sh"
 install -m 0644 "$device_dir/kiki-adb.rc" "$tmp/root/etc/init/kiki-adb.rc"
 install -m 0644 "$flags" "$tmp/root/lib64/adbd_flags_c_lib.so"
-if [[ ! -x "$tmp/root/bin/$scanout_binary" ]]; then
-    "$repo_dir/scripts/build-black-scanout.sh" "$tmp/root/bin/$scanout_binary" "$scanout_variant"
+if [[ -n "$scanout_binary" ]]; then
+    if [[ ! -x "$tmp/root/bin/$scanout_binary" ]]; then
+        "$repo_dir/scripts/build-black-scanout.sh" "$tmp/root/bin/$scanout_binary" "$scanout_variant"
+    fi
+    install -m 0644 "$device_dir/$scanout_rc" "$tmp/root/etc/init/$scanout_rc"
 fi
-install -m 0644 "$device_dir/$scanout_rc" "$tmp/root/etc/init/$scanout_rc"
 if [[ "$mode" == surface-test ]]; then
+    # The extracted stable image may already contain the KMS black-screen service.
+    # Remove it only from this temporary test image so SF/HWC can take DRM master.
+    rm -f "$tmp/root/bin/kiki_black_scanout" \
+          "$tmp/root/etc/init/kiki_black_scanout.rc"
     install -D -m 0755 "$surfaceflinger" "$tmp/root/system/bin/surfaceflinger"
+    install -m 0755 "$tombstoned" "$tmp/root/system/bin/tombstoned"
+    install -D -m 0644 "$runtime_apex" "$tmp/root/system/apex/com.android.runtime.apex"
+    install -D -m 0644 "$crash_dump_policy" "$tmp/root/system/etc/seccomp_policy/crash_dump.arm64.policy"
+    install -D -m 0644 "$tombstoned_rc" "$tmp/root/system/etc/init/tombstoned.rc"
     install -m 0755 "$test_ui" "$tmp/root/bin/kiki_test_ui"
     install -m 0644 "$device_dir/kiki_test_ui.rc" "$tmp/root/etc/init/kiki_test_ui.rc"
-    install -D -m 0644 "$hwc_apex" "$tmp/root/vendor/apex/com.android.hardware.graphics.composer.ranchu.apex"
+    # The stable flat image starts HWC directly from /system/bin/hwcomposer;
+    # adding an unactivated vendor APEX does not affect the running service.
+    install -D -m 0755 "$hwc_service" "$tmp/root/system/bin/hwcomposer"
+    # Keep the entire native 64-bit framework library set ABI-coherent with this
+    # SurfaceFlinger build. The frozen black base came from an older AOSP tree.
+    mkdir -p -- "$tmp/root/system/lib64"
+    cp -a "$framework_lib_dir/." "$tmp/root/system/lib64/"
 fi
 if [[ "$mode" == test-ui ]]; then
     install -m 0644 "$device_dir/kiki_test_scanout.rc" "$tmp/root/etc/init/kiki_test_scanout.rc"
@@ -65,6 +93,8 @@ sed -i \
     -e 's/^ro.product.system_ext.manufacturer=.*/ro.product.system_ext.manufacturer=Kiki/' \
     -e 's/^ro.product.system_ext.model=.*/ro.product.system_ext.model=KikiAOSP Test/' \
     "$props"
+sed -i '/^debug.sf.kikiaosp_allow_early_composition=/d' "$props"
+printf '%s\n' 'debug.sf.kikiaosp_allow_early_composition=true' >> "$props"
 
 mkdir -p -- "$(dirname -- "$output")"
 mkfs.erofs -U 6b696b69-414f-5350-7465-737400000001 --all-root \

@@ -7,6 +7,10 @@ mkdir -p "$AOSP_ROOT/device/kiki"
 rm -rf "$AOSP_ROOT/device/kiki/kikiaosp_test"
 cp -a "$REPO_ROOT/device/kiki/kikiaosp_test" "$AOSP_ROOT/device/kiki/"
 patch -d "$AOSP_ROOT" -p1 --forward < "$REPO_ROOT/patches/aosp-working-tree.patch"
+patch -d "$AOSP_ROOT" -p1 --forward < "$REPO_ROOT/patches/aosp-render-output.patch"
+patch -d "$AOSP_ROOT" -p1 --forward < "$REPO_ROOT/patches/aosp-sf-layerhandle-diagnostics.patch"
+patch -d "$AOSP_ROOT" -p1 --forward < "$REPO_ROOT/patches/aosp-hwc-guest-composer.patch"
+patch -d "$AOSP_ROOT" -p1 --forward < "$REPO_ROOT/patches/aosp-hwc-dmabuf-map.patch"
 while IFS= read -r -d '' src; do
   rel=${src#"$REPO_ROOT/overlays/"}
   mkdir -p "$AOSP_ROOT/$(dirname "$rel")"

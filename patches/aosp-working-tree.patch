@@ -747,18 +747,26 @@ index 9eb27da5..59caf2d5 100644
      DEBUG_LOG("%s: sysprop ro.vendor.hwcomposer.mode is %s", __FUNCTION__, mode.c_str());
      return mode == "client";
 diff --git a/device/generic/goldfish/hals/hwc3/Composer.cpp b/device/generic/goldfish/hals/hwc3/Composer.cpp
-index 96fd85f8..9fec78f2 100644
+index 96fd85f8..3e1d7fc1 100644
 --- a/device/generic/goldfish/hals/hwc3/Composer.cpp
 +++ b/device/generic/goldfish/hals/hwc3/Composer.cpp
-@@ -24,6 +24,7 @@
+@@ -19,11 +19,15 @@
+ #include <android-base/logging.h>
+ #include <android/binder_ibinder_platform.h>
+ 
++#include <cstdio>
++
+ #include "Common.h"
+ 
  namespace aidl::android::hardware::graphics::composer3::impl {
  
  ndk::ScopedAStatus Composer::createClient(std::shared_ptr<IComposerClient>* outClient) {
++    { FILE* k = fopen("/dev/kmsg", "w"); if (k) { fprintf(k, "KIKI-BINDER Composer::createClient entered\n"); fclose(k); } }
 +    ALOGE("KikiAOSP trace: Composer::createClient entered");
      DEBUG_LOG("%s", __FUNCTION__);
  
      std::unique_lock<std::mutex> lock(mClientMutex);
-@@ -110,4 +111,4 @@ ndk::ScopedAStatus Composer::getCapabilities(std::vector<Capability>* caps) {
+@@ -110,4 +114,4 @@ ndk::ScopedAStatus Composer::getCapabilities(std::vector<Capability>* caps) {
      return binder;
  }
  
@@ -766,7 +774,7 @@ index 96fd85f8..9fec78f2 100644
 \ No newline at end of file
 +}  // namespace aidl::android::hardware::graphics::composer3::impl
 diff --git a/device/generic/goldfish/hals/hwc3/ComposerClient.cpp b/device/generic/goldfish/hals/hwc3/ComposerClient.cpp
-index 0a68cb18..2cb7f55c 100644
+index 0a68cb18..ce038789 100644
 --- a/device/generic/goldfish/hals/hwc3/ComposerClient.cpp
 +++ b/device/generic/goldfish/hals/hwc3/ComposerClient.cpp
 @@ -16,6 +16,8 @@
@@ -786,10 +794,11 @@ index 0a68cb18..2cb7f55c 100644
      DEBUG_LOG("%s", __FUNCTION__);
  
      HWC3::Error error = HWC3::Error::None;
-@@ -443,6 +446,9 @@ ndk::ScopedAStatus ComposerClient::getDisplayDecorationSupport(
+@@ -443,6 +446,10 @@ ndk::ScopedAStatus ComposerClient::getDisplayDecorationSupport(
  
  ndk::ScopedAStatus ComposerClient::registerCallback(
      const std::shared_ptr<IComposerCallback>& callback) {
++    { FILE* k = fopen("/dev/kmsg", "w"); if (k) { fprintf(k, "KIKI-BINDER ComposerClient::registerCallback entered\n"); fclose(k); } }
 +    ALOGE("KikiAOSP trace: ComposerClient::registerCallback entered");
 +    std::fprintf(stderr, "KIKI-COMPOSERCLIENT registerCallback entered\n");
 +    std::fflush(stderr);
@@ -1281,7 +1290,7 @@ index b665d99b..2dfccb14 100644
      return HWC3::Error::None;
  }
 diff --git a/device/generic/goldfish/hals/hwc3/VsyncThread.cpp b/device/generic/goldfish/hals/hwc3/VsyncThread.cpp
-index 0ec1b23e..cd6c7e91 100644
+index 0ec1b23e..624efade 100644
 --- a/device/generic/goldfish/hals/hwc3/VsyncThread.cpp
 +++ b/device/generic/goldfish/hals/hwc3/VsyncThread.cpp
 @@ -137,6 +137,7 @@ void VsyncThread::threadLoop() {
@@ -1301,7 +1310,7 @@ index 0ec1b23e..cd6c7e91 100644
          {
              std::unique_lock<std::mutex> lock(mStateMutex);
  
-@@ -152,12 +155,21 @@ void VsyncThread::threadLoop() {
+@@ -152,12 +155,22 @@ void VsyncThread::threadLoop() {
              // Display has finished refreshing at previous vsync period. Update the
              // vsync period if there was a pending update.
              vsyncPeriod = updateVsyncPeriodLocked(mPreviousVsync);
@@ -1316,6 +1325,7 @@ index 0ec1b23e..cd6c7e91 100644
 +        if (vsyncEnabled) {
 +            if (callbacks) {
 +                if (!kikiLoggedFirstCallback) {
++                    { FILE* k = fopen("/dev/kmsg", "w"); if (k) { fprintf(k, "KIKI-BINDER software VSYNC callback active\n"); fclose(k); } }
 +                    ALOGI("KikiAOSP software VSYNC callback active for display:%" PRId64,
 +                          mDisplayId);
 +                    kikiLoggedFirstCallback = true;
@@ -6580,10 +6590,18 @@ index e07d499fb2..1ffcf2aead 100644
          ALOGE("registerCallback failed %s", status.getDescription().c_str());
      }
 diff --git a/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp b/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
-index 7565080d29..0789aea08f 100644
+index 7565080d29..f801b0994e 100644
 --- a/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
 +++ b/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
-@@ -492,7 +492,7 @@ SurfaceFlinger::SurfaceFlinger(Factory& factory, SkipInitializationTag)
+@@ -26,6 +26,7 @@
+ #include "SurfaceFlinger.h"
+ 
+ #include <aidl/android/hardware/power/Boost.h>
++#include <atomic>
+ #include <android-base/logging.h>
+ #include <android-base/parseint.h>
+ #include <android-base/properties.h>
+@@ -492,7 +493,7 @@ SurfaceFlinger::SurfaceFlinger(Factory& factory, SkipInitializationTag)
  
  SurfaceFlinger::SurfaceFlinger(Factory& factory) : SurfaceFlinger(factory, SkipInitialization) {
      SFTRACE_CALL();
@@ -6592,7 +6610,7 @@ index 7565080d29..0789aea08f 100644
  
      hasSyncFramework = running_without_sync_framework(true);
  
-@@ -957,25 +957,46 @@ void SurfaceFlinger::init() FTL_FAKE_GUARD(kMainThreadContext) {
+@@ -957,25 +958,46 @@ void SurfaceFlinger::init() FTL_FAKE_GUARD(kMainThreadContext) {
                                             ? renderengine::RenderEngine::ContextPriority::Realtime
                                             : renderengine::RenderEngine::ContextPriority::Medium);
      chooseRenderEngineType(builder);
@@ -6641,7 +6659,7 @@ index 7565080d29..0789aea08f 100644
      mDisplayModeController.setHwComposer(&composer);
  
      ClientCache::getInstance().setRenderEngine(&getRenderEngine());
-@@ -990,8 +1011,15 @@ void SurfaceFlinger::init() FTL_FAKE_GUARD(kMainThreadContext) {
+@@ -990,8 +1012,15 @@ void SurfaceFlinger::init() FTL_FAKE_GUARD(kMainThreadContext) {
      }
  
      // Process hotplug for displays connected at boot.
@@ -6659,7 +6677,7 @@ index 7565080d29..0789aea08f 100644
  
      mFrontInternalDisplayId = getPrimaryDisplayIdLocked();
  
-@@ -1010,9 +1038,11 @@ void SurfaceFlinger::init() FTL_FAKE_GUARD(kMainThreadContext) {
+@@ -1010,9 +1039,11 @@ void SurfaceFlinger::init() FTL_FAKE_GUARD(kMainThreadContext) {
          display = getFrontInternalDisplayLocked();
      }
  
@@ -6674,6 +6692,101 @@ index 7565080d29..0789aea08f 100644
  
      ConditionalLock modeLock(mModeTransitionMutex,
                               FlagManager::getInstance()
+@@ -2538,6 +2569,13 @@ void SurfaceFlinger::onComposerHalVsync(hal::HWDisplayId hwcDisplayId, int64_t t
+                          ? ftl::Concat(__func__, ' ', hwcDisplayId, ' ', *vsyncPeriod, "ns").c_str()
+                          : ftl::Concat(__func__, ' ', hwcDisplayId).c_str());
+ 
++    static std::atomic<uint32_t> kikiVsyncTraceCount{0};
++    const bool traceKikiVsync = kikiVsyncTraceCount.fetch_add(1) < 4;
++    if (traceKikiVsync) {
++        ALOGE("Kiki SF onComposerHalVsync entry hwc=%" PRIu64 " timestamp=%" PRId64,
++              hwcDisplayId, timestamp);
++    }
++
+     if (timestamp <= 0) {
+         ALOGW("%s: Ignoring invalid timestamp %" PRId64 " from HWC display %" PRIu64, __func__,
+               timestamp, hwcDisplayId);
+@@ -2546,11 +2584,21 @@ void SurfaceFlinger::onComposerHalVsync(hal::HWDisplayId hwcDisplayId, int64_t t
+     }
+ 
+     Mutex::Autolock lock(mStateLock);
+-    if (const auto displayIdOpt = getHwComposer().onVsync(hwcDisplayId, timestamp)) {
++    const auto displayIdOpt = getHwComposer().onVsync(hwcDisplayId, timestamp);
++    if (traceKikiVsync) {
++        ALOGE("Kiki SF onComposerHalVsync mapped=%d physical=%" PRIu64,
++              displayIdOpt.has_value(), displayIdOpt ? displayIdOpt->value : 0);
++    }
++    if (displayIdOpt) {
+         REQUIRE_SCHEDULER;
+ 
+-        if (mScheduler->addResyncSample(*displayIdOpt, timestamp, vsyncPeriod,
+-                                        VSyncTracker::VsyncTimeSource::HwVsyncCallback)) {
++        const bool accepted = mScheduler->addResyncSample(
++                *displayIdOpt, timestamp, vsyncPeriod,
++                VSyncTracker::VsyncTimeSource::HwVsyncCallback);
++        if (traceKikiVsync) {
++            ALOGE("Kiki SF onComposerHalVsync resyncAccepted=%d", accepted);
++        }
++        if (accepted) {
+             // period flushed
+             mScheduler->modulateVsync(displayIdOpt, &VsyncModulator::onRefreshRateChangeCompleted);
+         }
+@@ -2559,6 +2607,8 @@ void SurfaceFlinger::onComposerHalVsync(hal::HWDisplayId hwcDisplayId, int64_t t
+ 
+ void SurfaceFlinger::onComposerHalHotplugEvent(hal::HWDisplayId hwcDisplayId,
+                                                DisplayHotplugEvent event) {
++    ALOGE("Kiki SF onComposerHalHotplugEvent hwc=%" PRIu64 " event=%d", hwcDisplayId,
++          static_cast<int32_t>(event));
+     if (event == DisplayHotplugEvent::CONNECTED || event == DisplayHotplugEvent::DISCONNECTED) {
+         const HWComposer::HotplugEvent hotplugEvent = event == DisplayHotplugEvent::CONNECTED
+                 ? HWComposer::HotplugEvent::Connected
+@@ -3138,6 +3188,13 @@ bool SurfaceFlinger::commit(PhysicalDisplayId pacesetterId,
+                 updateLayerSnapshots(vsyncId, pacesetterFrameTargetPtr->frameBeginTime().ns(),
+                                      pacesetterFrameTargetPtr->expectedPresentTime().ns(),
+                                      flushTransactions, transactionsAreEmpty);
++        static std::atomic<uint32_t> kikiFrameDecisionTraceCount{0};
++        const uint32_t kikiFrameDecision = kikiFrameDecisionTraceCount.fetch_add(1);
++        if (kikiFrameDecision < 12) {
++            ALOGE("Kiki SF frame decision vsync=%" PRIu64 " composite=%d transactionsEmpty=%d flush=%d",
++                  ftl::to_underlying(vsyncId), mustComposite, transactionsAreEmpty,
++                  flushTransactions);
++        }
+ 
+         // A display transaction for hotplug reconnect may have just destroyed the original.
+         pacesetterFrameTargetPtr = mScheduler->pacesetterFrameTarget();
+@@ -3198,7 +3255,18 @@ bool SurfaceFlinger::commit(PhysicalDisplayId pacesetterId,
+ 
+     persistDisplayBrightness(mustComposite);
+ 
+-    return mustComposite && CC_LIKELY(mBootStage != BootStage::BOOTLOADER);
++    // This device intentionally omits bootanimation. Let its native test surface
++    // exercise the real compositor instead of waiting forever for bootanim's first buffer.
++    const bool allowKikiEarlyComposition =
++            base::GetBoolProperty("debug.sf.kikiaosp_allow_early_composition"s, false);
++    if (allowKikiEarlyComposition && mustComposite && mBootStage == BootStage::BOOTLOADER) {
++        static std::atomic<bool> loggedKikiEarlyComposition{false};
++        if (!loggedKikiEarlyComposition.exchange(true)) {
++            ALOGI("KikiAOSP: allowing SurfaceFlinger composition without bootanimation");
++        }
++    }
++    return mustComposite &&
++            (mBootStage != BootStage::BOOTLOADER || allowKikiEarlyComposition);
+ }
+ 
+ std::optional<compositionengine::CompositionRefreshArgs> SurfaceFlinger::addOutputsToRefreshArgs(
+@@ -3329,6 +3397,12 @@ std::future<void> SurfaceFlinger::offloadGpuCompositedDisplays(
+ 
+ CompositeResultsPerDisplay SurfaceFlinger::composite(
+         PhysicalDisplayId pacesetterId, const scheduler::FrameTargeters& frameTargeters) {
++    static std::atomic<uint32_t> kikiCompositeTraceCount{0};
++    const uint32_t kikiCompositeCount = kikiCompositeTraceCount.fetch_add(1);
++    if (kikiCompositeCount < 12) {
++        ALOGE("Kiki SF composite entered frame=%u display=%" PRIu64, kikiCompositeCount,
++              pacesetterId.value);
++    }
+     SFTRACE_ASYNC_FOR_TRACK_BEGIN(WorkloadTracer::TRACK_NAME, "Composition",
+                                   WorkloadTracer::COMPOSITION_TRACE_COOKIE);
+ 
 diff --git a/frameworks/native/services/surfaceflinger/main_surfaceflinger.cpp b/frameworks/native/services/surfaceflinger/main_surfaceflinger.cpp
 index 4dde12ee5d..1100d81cd6 100644
 --- a/frameworks/native/services/surfaceflinger/main_surfaceflinger.cpp

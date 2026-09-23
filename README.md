@@ -19,6 +19,7 @@ The frozen reference image intentionally has no Launcher, bootanimation, or UI l
 ```
 device/kiki/kikiaosp_test/       device/product definition
 patches/aosp-working-tree.patch  tracked AOSP source changes
+patches/aosp-render-output.patch raster client-target bring-up changes
 overlays/                        required formerly-untracked source files
 scripts/apply-aosp-integration.sh
 ```
@@ -183,9 +184,9 @@ Linux TCG uses the same devices, replacing `-accel whpx -cpu host` with `-accel 
 
 ## 9. Proven state and next step
 
-Proven: ARM64 kernel boot; Android init/Binder/servicemanager/allocator/HWC/SurfaceFlinger startup; DRM connector detection; 1800-second no-panic/no-SIGSEGV/no-core-service-restart run; real SurfaceFlinger client composition without synthetic green frames.
+The frozen black baseline previously passed a 1800-second no-panic/no-SIGSEGV/no-core-service-restart run, with ARM64 kernel boot, Android init/Binder/servicemanager/allocator/HWC/SurfaceFlinger startup, DRM connector detection, and ADB. Separately, the native test client now submits two solid-color SurfaceComposer layers (background and moving square) every 500 ms; QEMU monitor captures prove two distinct frames from the actual display output.
 
-Not yet claimed: a visible Android UI or a finished real-layer scanout path. The current minimal baseline commits one black DRM framebuffer, removes QEMU's `Display output is not active` placeholder, and keeps ADB online with `ro.product.device=kikiaosp_test`. The black frame is a temporary product bootstrap service; it drops DRM master after modeset so a future SurfaceFlinger client target can take over. The next controlled step is to inspect SurfaceFlinger through ADB and submit a real Android layer.
+This proves the minimal Android layer → SurfaceFlinger → GuestFrameComposer → DRM/KMS → QEMU display path for solid-color layers. It does not yet prove arbitrary app-buffer/client-target composition, a launcher/window manager, input, sustained stability, or high-refresh operation. See [the two-frame rendering checkpoint](#12-native-two-frame-ui-proof-2026-09-23) for the exact image, boot mode, and evidence hashes.
 
 ## 10. Development history
 
@@ -240,3 +241,56 @@ On Windows, `scripts/run-black-baseline.ps1 -Qemu <qemu-system-aarch64.exe>
 options. The window remains open until you close QEMU. After `adb connect
 127.0.0.1:5555`, verify `adb shell getprop ro.product.device` returns
 `kikiaosp_test`. The serial log must contain `KIKI-BLACK scanout active`.
+
+## 12. Native two-frame UI proof (2026-09-23)
+
+The first visible Android UI is deliberately only two native solid-color
+SurfaceComposer layers: a dark background and a 48×48 animated square. The
+square changes position and color every 500 ms. This adds no launcher or
+optional Android framework service.
+
+For a fresh AOSP tree, apply the repository integration patches, then build the
+active (non-APEX) Ranchu composer service. The frozen image runs this service
+as `/system/bin/hwcomposer`; placing a composer APEX in `/vendor/apex` alone
+does not replace that process.
+
+```bash
+source build/envsetup.sh
+lunch kikiaosp_test_arm64_phone-trunk_staging-userdebug
+m out/soong/.intermediates/device/generic/goldfish/hals/hwc3/android.hardware.graphics.composer3-service.ranchu/android_vendor_arm64_armv8-a/android.hardware.graphics.composer3-service.ranchu
+cd ~/projects/kikiaosp_test
+scripts/repack-black-baseline.sh \
+  ~/kiki-kernel-system-black-adb.img \
+  ~/aosp-master \
+  ~/kiki-kernel-system-sf-guest-hwc3-map-ui.img surface-test
+```
+
+On Windows, boot that image with `androidboot.hardware.hwcomposer.mode=guest`,
+640×480 virtio-gpu, and upstream QEMU's `-display gtk,gl=off`. In the KikiEmu
+workspace the tested command is:
+
+```powershell
+.\tools\run_kiki_matched_libs_test.ps1 `
+  -ImageName 'kiki-kernel-system-sf-guest-hwc3-map-ui.img' `
+  -HwcMode guest
+```
+
+The guest minigbm mapper currently returns `-38` (`ENOSYS`) for CPU locking the
+composer output buffer. In this opt-in test mode the composer falls back to a
+synchronized dma-buf `mmap`, writes its solid-color layer composition there,
+and submits that buffer through its existing DRM flush path. The ordinary
+mapper path is unchanged when it works.
+
+Repacked test-image SHA-256:
+`cd87e319bf2322c41c8f0062b0ff2cc134d25873b3d08ad0f2199b3ab4be710f`.
+QEMU monitor evidence is stored in `docs/evidence/`:
+
+| Evidence PNG | PNG SHA-256 | Source QEMU PPM SHA-256 | Visible result |
+| --- | --- | --- | --- |
+| `kiki-native-ui-frame-1.png` | `2ae7eb1a61b62a439125dd3c4f8866ccad3d45119bde8586470dd20d00ba826d` | `415cc6a70bfbb5f61f1cbf6b24e63ff0b811fe1b3dc32a109e200e589c275066` | dark background, square near center |
+| `kiki-native-ui-frame-2.png` | `6e858d44fbd40a23900f5638d18f08ad8d643a88b9b36ffb3faccee76b7b4251` | `e45fa412a826659ecc707ca971003ec3bc35510dd0fd2ae5cfe330dbeeb537ee` | dark background, square at a different position/color |
+
+The QEMU screen captures themselves (not just SurfaceFlinger or app logs) are
+different. The guest stays ADB-accessible, and its `/system/bin/hwcomposer`
+hash matches the newly built Ranchu service. Keep `mode=guest` opt-in; the
+frozen black-baseline boot remains the default.

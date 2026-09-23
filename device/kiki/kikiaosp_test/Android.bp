@@ -148,6 +148,8 @@ cc_binary {
     shared_libs: [
         "libbinder",
         "libcutils",
+        "libEGL",
+        "libGLESv2",
         "libgui",
         "libnativewindow",
         "libui",

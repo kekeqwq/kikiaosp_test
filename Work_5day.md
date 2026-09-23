@@ -202,3 +202,61 @@ Next trace should establish whether the AIDL `IComposerClient::registerCallback`
 transaction actually reaches the active ComposerClient object, then follow the
 first `onVsync` into SurfaceFlinger scheduling. This QEMU test was stopped after
 confirming the zero-frame state.
+
+## 2026-09-23 — first native SurfaceFlinger/HWC animation on screen
+
+This supersedes the preceding negative SurfaceFlinger/HWC result: we now have
+two distinct 640x480 QEMU monitor captures showing the Android test layers on
+the actual display output. `kiki_test_ui` creates only two native solid-color
+SurfaceComposer layers (background and moving square) and changes the square's
+position/color every 500 ms. The guest remains ADB-accessible on the 7.3.0-rc4-4k
+kernel.
+
+Two integration details mattered. First, the frozen image starts the active
+composer from `/system/bin/hwcomposer`; the initially repacked composer APEX
+was present under `/vendor/apex` but was not mounted or used. Rebuilding and
+installing the active non-APEX service made the `guest` composer choice take
+effect. Second, minigbm's `GraphicBufferMapper::lock()` returns `-38` for the
+composer output buffer. An opt-in GuestFrameComposer fallback now brackets a
+dma-buf `mmap` with `DMA_BUF_IOCTL_SYNC`, writes the software composition, and
+uses the existing DRM flush. The normal mapper-lock path remains first choice.
+
+Build the active HWC binary on 185 in the `kiki-hwc-guest` tmux session:
+
+```bash
+source build/envsetup.sh
+lunch kikiaosp_test_arm64_phone-trunk_staging-userdebug
+m out/soong/.intermediates/device/generic/goldfish/hals/hwc3/android.hardware.graphics.composer3-service.ranchu/android_vendor_arm64_armv8-a/android.hardware.graphics.composer3-service.ranchu
+```
+
+After applying the repository patch set, the final tested system image was
+repacked with:
+
+```bash
+scripts/repack-black-baseline.sh \
+  /home/keke/kiki-kernel-system-black-adb.img \
+  /home/keke/aosp-master \
+  /home/keke/kiki-kernel-system-sf-guest-hwc3-map-ui.img surface-test
+```
+
+The image SHA-256 is
+`cd87e319bf2322c41c8f0062b0ff2cc134d25873b3d08ad0f2199b3ab4be710f`.
+QEMU ran with `androidboot.hardware.hwcomposer.mode=guest`, WHPX, 640x480
+virtio-gpu, and upstream QEMU GTK display. The active guest
+`/system/bin/hwcomposer` hash matched the built non-APEX service. Logcat shows
+`KikiAOSP: mapped composition dma-buf` followed by continued test frame
+commits.
+
+QEMU monitor PPM evidence (PNG copies are in `docs/evidence/`):
+
+- frame 1 SHA-256:
+  `415cc6a70bfbb5f61f1cbf6b24e63ff0b811fe1b3dc32a109e200e589c275066`
+- frame 2 SHA-256:
+  `e45fa412a826659ecc707ca971003ec3bc35510dd0fd2ae5cfe330dbeeb537ee`
+
+Both captures visibly show the dark background and square, with different
+position/color. This proves the minimal real Android layer → SurfaceFlinger →
+HWC → DRM/KMS → QEMU display path for solid-color layers. It does not yet
+prove arbitrary app-buffer/client-target composition, launcher/input, sustained
+stability, or high-refresh operation. The test QEMU window was deliberately
+left open for live confirmation.
