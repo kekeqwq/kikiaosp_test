@@ -13068,10 +13068,10 @@ index bf72b0c..a694cc6 100644
 -    reboot_on_failure reboot,vold-failed
 +    # KikiAOSP bring-up: do not reboot when mainline guest lacks Android default fstab
 diff --git a/packages/modules/adb/daemon/main.cpp b/packages/modules/adb/daemon/main.cpp
-index 3d3f3024..72ef6f41 100644
+index 3d3f3024..10e1fe13 100644
 --- a/packages/modules/adb/daemon/main.cpp
 +++ b/packages/modules/adb/daemon/main.cpp
-@@ -255,8 +255,15 @@ int adbd_main() {
+@@ -255,8 +255,17 @@ int adbd_main() {
      watchdog::Initialize();
  #endif
  
@@ -13083,6 +13083,8 @@ index 3d3f3024..72ef6f41 100644
 +    // explicitly opts into its local, unlocked TCP transport.
 +    if (!android::base::GetBoolProperty("ro.kikiaosp.adb.noauth", false)) {
 +        adbd_auth_init();
++    } else {
++        auth_required = false;
 +    }
 +    LOG(ERROR) << "KIKI-ADBD after auth init";
  
@@ -13093,9 +13095,36 @@ index 3d3f3024..72ef6f41 100644
  #endif
  
 +    LOG(ERROR) << "KIKI-ADBD before transport setup";
++    LOG(ERROR) << "KIKI-ADBD listen_addrs=" << android::base::GetProperty("service.adb.listen_addrs", "<unset>")
++               << " tcp=" << android::base::GetProperty("service.adb.tcp.port", "<unset>");
      // If one of these properties is set, also listen on that port.
 @@ -305,6 +313,7 @@ int adbd_main() {
      }
  
 +    LOG(ERROR) << "KIKI-ADBD after transport setup";
      LOG(INFO) << "adbd started";
+diff --git a/packages/modules/adb/daemon/transport_socket_server.cpp b/packages/modules/adb/daemon/transport_socket_server.cpp
+index 950bb9dc..9b062a0d 100644
+--- a/packages/modules/adb/daemon/transport_socket_server.cpp
++++ b/packages/modules/adb/daemon/transport_socket_server.cpp
+@@ -123,6 +123,7 @@ void server_socket_thread(std::string_view addr) {
+             continue;
+         }
+         close_on_exec(serverfd.get());
++        LOG(ERROR) << "KIKI-ADBD socket bound " << addr;
+     }
+ 
+@@ -134,6 +135,7 @@ void server_socket_thread(std::string_view addr) {
+         }
+         if (fd >= 0) {
++            LOG(ERROR) << "KIKI-ADBD socket accepted " << addr;
+             D("server: new connection on fd %d", fd.get());
+             close_on_exec(fd.get());
+             disable_tcp_nagle(fd.get());
+@@ -158,4 +160,4 @@ int init_socket_transport(atransport* t, unique_fd fd, int, bool) {
+     auto fd_connection = std::make_unique<FdConnection>(std::move(fd));
+     t->SetConnection(std::make_unique<BlockingConnectionAdapter>(std::move(fd_connection)));
+     return 0;
+-}
+\ No newline at end of file
++}
