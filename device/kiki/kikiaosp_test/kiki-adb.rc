@@ -14,6 +14,7 @@ service kiki_adbd /system/bin/adbd --root_seclabel=u:r:su:s0
 
 on early-init
     setprop ro.adb.secure 0
+    setprop ro.kikiaosp.adb.noauth 1
 
 on property:ro.persistent_properties.ready=true
     setprop ro.adb.secure 0
