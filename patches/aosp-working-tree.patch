@@ -1,5 +1,4 @@
 
-project art/
 diff --git a/art/build/apex/Android.bp b/art/build/apex/Android.bp
 index 37623cec17..87b059592b 100644
 --- a/art/build/apex/Android.bp
@@ -511,7 +510,6 @@ index c3a28d5815..94e505225a 100644
    tlsPtr_.exception = new_exception.Ptr();
  }
 
-project build/make/
 diff --git a/build/make/core/Makefile b/build/make/core/Makefile
 index 39cad66a44..62eddc9280 100644
 --- a/build/make/core/Makefile
@@ -545,7 +543,6 @@ index 2bcc764b55..3f273b4053 100644
  # in product-installed-modules.
  PRODUCT_PACKAGES := $(sort $(PRODUCT_PACKAGES))
 
-project build/release/
 diff --git a/build/release/flag_values/trunk_staging/RELEASE_CROSS_DEVICE_SYNC.textproto b/build/release/flag_values/trunk_staging/RELEASE_CROSS_DEVICE_SYNC.textproto
 index c7cb33bb5..53132ee17 100644
 --- a/build/release/flag_values/trunk_staging/RELEASE_CROSS_DEVICE_SYNC.textproto
@@ -557,7 +554,6 @@ index c7cb33bb5..53132ee17 100644
 +  bool_value: false
  }
 
-project build/soong/
 diff --git a/build/soong/cc/binary.go b/build/soong/cc/binary.go
 index 6d8d66c16..51b2644f0 100644
 --- a/build/soong/cc/binary.go
@@ -574,7 +570,6 @@ index 6d8d66c16..51b2644f0 100644
  	ctx.InstallAbsoluteSymlink(dir, file.Base(), target)
  	binary.postInstallCmds = append(binary.postInstallCmds, makeSymlinkCmd(dirOnDevice, file.Base(), target))
 
-project device/generic/goldfish/
 diff --git a/device/generic/goldfish/hals/gralloc/allocator.cpp b/device/generic/goldfish/hals/gralloc/allocator.cpp
 index 3f2632ff..95877eda 100644
 --- a/device/generic/goldfish/hals/gralloc/allocator.cpp
@@ -928,6 +923,41 @@ index 2f03f6ab..f2e2635d 100644
          if (!mComposer) {
              ALOGE("%s failed to allocate FrameComposer", __FUNCTION__);
              return HWC3::Error::NoResources;
+diff --git a/device/generic/goldfish/hals/hwc3/Display.cpp b/device/generic/goldfish/hals/hwc3/Display.cpp
+index 08b7a46a..4c7aa31d 100644
+--- a/device/generic/goldfish/hals/hwc3/Display.cpp
++++ b/device/generic/goldfish/hals/hwc3/Display.cpp
+@@ -17,6 +17,7 @@
+ #include "Display.h"
+ 
+ #include <android-base/parseint.h>
++#include <android-base/properties.h>
+ #include <android-base/unique_fd.h>
+ #include <pthread.h>
+ #include <sched.h>
+@@ -122,6 +123,8 @@ HWC3::Error Display::init(const std::vector<DisplayConfig>& configs, int32_t act
+     ALOGD("%s display:%" PRId64 " with config:%s", __FUNCTION__, mId, activeConfigString.c_str());
+ 
+     mVsyncThread.start(activeConfig.getVsyncPeriod());
++    ALOGI("KikiAOSP enabling software VSYNC from display init for display:%" PRId64, mId);
++    mVsyncThread.setVsyncEnabled(true);
+ 
+     return HWC3::Error::None;
+ }
+@@ -447,7 +450,12 @@ HWC3::Error Display::registerCallback(const std::shared_ptr<IComposerCallback>&
+ 
+     mVsyncThread.setCallbacks(callback);
+ 
+-    return HWC3::Error::Unsupported;
++    if (::android::base::GetBoolProperty("ro.boot.kikiaosp.software_vsync", false)) {
++        ALOGI("KikiAOSP enabling software VSYNC for display:%" PRId64, mId);
++        return mVsyncThread.setVsyncEnabled(true);
++    }
++
++    return HWC3::Error::None;
+ }
+ 
+ HWC3::Error Display::setActiveConfig(int32_t configId) {
 diff --git a/device/generic/goldfish/hals/hwc3/DrmClient.cpp b/device/generic/goldfish/hals/hwc3/DrmClient.cpp
 index a55e94bd..196b6359 100644
 --- a/device/generic/goldfish/hals/hwc3/DrmClient.cpp
@@ -1200,6 +1230,30 @@ index b665d99b..2dfccb14 100644
  
      return HWC3::Error::None;
  }
+diff --git a/device/generic/goldfish/hals/hwc3/VsyncThread.cpp b/device/generic/goldfish/hals/hwc3/VsyncThread.cpp
+index 0ec1b23e..7541223d 100644
+--- a/device/generic/goldfish/hals/hwc3/VsyncThread.cpp
++++ b/device/generic/goldfish/hals/hwc3/VsyncThread.cpp
+@@ -137,6 +137,7 @@ void VsyncThread::threadLoop() {
+     Nanoseconds vsyncPeriod = mVsyncPeriod;
+ 
+     int vsyncs = 0;
++    bool kikiLoggedFirstCallback = false;
+     TimePoint previousLog = std::chrono::steady_clock::now();
+ 
+     while (!mShuttingDown.load()) {
+@@ -156,6 +157,11 @@ void VsyncThread::threadLoop() {
+ 
+         if (mVsyncEnabled) {
+             if (mCallbacks) {
++                if (!kikiLoggedFirstCallback) {
++                    ALOGI("KikiAOSP software VSYNC callback active for display:%" PRId64,
++                          mDisplayId);
++                    kikiLoggedFirstCallback = true;
++                }
+                 DEBUG_LOG("%s: for display:%" PRIu64 " calling vsync", __FUNCTION__, mDisplayId);
+                 mCallbacks->onVsync(mDisplayId, asNanosTimePoint(nextVsync),
+                                     static_cast<int32_t>(asNanosDuration(vsyncPeriod)));
 diff --git a/device/generic/goldfish/hals/hwc3/hwc3.rc b/device/generic/goldfish/hals/hwc3/hwc3.rc
 index ebb29483..c9bbf699 100644
 --- a/device/generic/goldfish/hals/hwc3/hwc3.rc
@@ -1236,7 +1290,6 @@ index 4dc91afe..9bf6b52f 100644
      class hal animation
      user system
 
-project device/google/cuttlefish/
 diff --git a/device/google/cuttlefish/guest/hals/gralloc/Android.bp b/device/google/cuttlefish/guest/hals/gralloc/Android.bp
 index eb58bae18..c0a89e176 100644
 --- a/device/google/cuttlefish/guest/hals/gralloc/Android.bp
@@ -1268,7 +1321,6 @@ index df715abf2..04fd9ad38 100644
      user nobody
      # The keymint service is not allowed to restart.
 
-project external/boringssl/
 diff --git a/external/boringssl/selftest/boringssl_self_test.rc b/external/boringssl/selftest/boringssl_self_test.rc
 index 2f20f802..b886a426 100644
 --- a/external/boringssl/selftest/boringssl_self_test.rc
@@ -1285,7 +1337,6 @@ index 2f20f802..b886a426 100644
      user root
  
 
-project external/mesa3d/
 diff --git a/external/mesa3d/src/gfxstream/guest/android/GfxStreamGralloc.cpp b/external/mesa3d/src/gfxstream/guest/android/GfxStreamGralloc.cpp
 index 1a70a9da5b9..25b6b83b692 100644
 --- a/external/mesa3d/src/gfxstream/guest/android/GfxStreamGralloc.cpp
@@ -1340,7 +1391,6 @@ index 46ffe4dcac8..543bb29833c 100644
  }
  
 
-project external/minigbm/
 diff --git a/external/minigbm/cros_gralloc/aidl/Allocator.cpp b/external/minigbm/cros_gralloc/aidl/Allocator.cpp
 index 1500892..20c9ef2 100644
 --- a/external/minigbm/cros_gralloc/aidl/Allocator.cpp
@@ -1635,7 +1685,6 @@ index 401c177..2233d32 100644
          "android.hardware.graphics.allocator-V2-ndk",
          "libminigbm_gralloc",
 
-project external/skia/
 diff --git a/external/skia/src/gpu/ganesh/gl/egl/GrGLMakeEGLInterface.cpp b/external/skia/src/gpu/ganesh/gl/egl/GrGLMakeEGLInterface.cpp
 index 2339698437..c18176798a 100644
 --- a/external/skia/src/gpu/ganesh/gl/egl/GrGLMakeEGLInterface.cpp
@@ -1667,7 +1716,6 @@ index 2339698437..c18176798a 100644
      GR_GL_CORE_FUNCTIONS_EACH(M)
      #undef M
 
-project frameworks/av/
 diff --git a/frameworks/av/media/libstagefright/renderfright/gl/GLESRenderEngine.cpp b/frameworks/av/media/libstagefright/renderfright/gl/GLESRenderEngine.cpp
 index 04da9a50b8..8b947d2fc2 100644
 --- a/frameworks/av/media/libstagefright/renderfright/gl/GLESRenderEngine.cpp
@@ -1681,7 +1729,6 @@ index 04da9a50b8..8b947d2fc2 100644
      if (!configs.empty()) {
          if (attribute != EGL_NONE) {
 
-project frameworks/base/
 diff --git a/frameworks/base/cmds/app_process/app_main.cpp b/frameworks/base/cmds/app_process/app_main.cpp
 index 4e41f2c1ac35..075c2bde8f98 100644
 --- a/frameworks/base/cmds/app_process/app_main.cpp
@@ -5908,7 +5955,6 @@ index 3ea580823df6..30de11f69a44 100644
  }
 +
 
-project frameworks/native/
 diff --git a/frameworks/native/cmds/flatland/Android.bp b/frameworks/native/cmds/flatland/Android.bp
 index 39a0d752a5..2f9174ede1 100644
 --- a/frameworks/native/cmds/flatland/Android.bp
@@ -6366,7 +6412,7 @@ index 65a28f9a72..555da4edfb 100644
          egl_surface_t* s = new egl_surface_t(dp, config, window, surface,
                                               getReportedColorSpace(colorSpace), cnx);
 diff --git a/frameworks/native/services/surfaceflinger/DisplayHardware/AidlComposerHal.cpp b/frameworks/native/services/surfaceflinger/DisplayHardware/AidlComposerHal.cpp
-index e07d499fb2..7dfeaac6bc 100644
+index e07d499fb2..1ffcf2aead 100644
 --- a/frameworks/native/services/surfaceflinger/DisplayHardware/AidlComposerHal.cpp
 +++ b/frameworks/native/services/surfaceflinger/DisplayHardware/AidlComposerHal.cpp
 @@ -20,6 +20,7 @@
@@ -6445,8 +6491,24 @@ index e07d499fb2..7dfeaac6bc 100644
      if (!status.isOk()) {
          ALOGE("getInterfaceVersion for AidlComposer constructor failed %s",
                status.getDescription().c_str());
+@@ -361,6 +396,7 @@ std::string AidlComposer::dumpDebugInfo() {
+ }
+ 
+ void AidlComposer::registerCallback(HWC2::ComposerCallback& callback) {
++    ALOGE("KikiAOSP trace: AidlComposer registerCallback entered");
+     if (mAidlComposerCallback) {
+         ALOGE("Callback already registered");
+     }
+@@ -373,6 +409,7 @@ void AidlComposer::registerCallback(HWC2::ComposerCallback& callback) {
+     }
+ 
+     const auto status = mAidlComposerClient->registerCallback(mAidlComposerCallback);
++    ALOGE("KikiAOSP trace: AidlComposer binder registerCallback status=%d", status.getExceptionCode());
+     if (!status.isOk()) {
+         ALOGE("registerCallback failed %s", status.getDescription().c_str());
+     }
 diff --git a/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp b/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
-index 7565080d29..5af51a0146 100644
+index 7565080d29..0789aea08f 100644
 --- a/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
 +++ b/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
 @@ -492,7 +492,7 @@ SurfaceFlinger::SurfaceFlinger(Factory& factory, SkipInitializationTag)
@@ -6458,7 +6520,7 @@ index 7565080d29..5af51a0146 100644
  
      hasSyncFramework = running_without_sync_framework(true);
  
-@@ -957,20 +957,39 @@ void SurfaceFlinger::init() FTL_FAKE_GUARD(kMainThreadContext) {
+@@ -957,25 +957,46 @@ void SurfaceFlinger::init() FTL_FAKE_GUARD(kMainThreadContext) {
                                             ? renderengine::RenderEngine::ContextPriority::Realtime
                                             : renderengine::RenderEngine::ContextPriority::Medium);
      chooseRenderEngineType(builder);
@@ -6500,7 +6562,14 @@ index 7565080d29..5af51a0146 100644
      mCompositionEngine->setHwComposer(mHWComposer.get());
      mOffloadedCompositionEngine->setHwComposer(mHWComposer.get());
      mOffloadedCompositionEngine->setPowerHintSessionEnabled(false);
-@@ -990,8 +1009,15 @@ void SurfaceFlinger::init() FTL_FAKE_GUARD(kMainThreadContext) {
+     auto& composer = mCompositionEngine->getHwComposer();
++    ALOGE("KikiAOSP trace: SurfaceFlinger before composer.setCallback");
+     composer.setCallback(*this);
++    ALOGE("KikiAOSP trace: SurfaceFlinger after composer.setCallback");
+     mDisplayModeController.setHwComposer(&composer);
+ 
+     ClientCache::getInstance().setRenderEngine(&getRenderEngine());
+@@ -990,8 +1011,15 @@ void SurfaceFlinger::init() FTL_FAKE_GUARD(kMainThreadContext) {
      }
  
      // Process hotplug for displays connected at boot.
@@ -6518,7 +6587,7 @@ index 7565080d29..5af51a0146 100644
  
      mFrontInternalDisplayId = getPrimaryDisplayIdLocked();
  
-@@ -1010,9 +1036,11 @@ void SurfaceFlinger::init() FTL_FAKE_GUARD(kMainThreadContext) {
+@@ -1010,9 +1038,11 @@ void SurfaceFlinger::init() FTL_FAKE_GUARD(kMainThreadContext) {
          display = getFrontInternalDisplayLocked();
      }
  
@@ -6678,7 +6747,6 @@ index 48e2586132..89a117ae26 100644
          ALOGE("native_window_api_connect_with_listener() failed: %s (%d)",
                strerror(-err), err);
 
-project hardware/google/gfxstream/
 diff --git a/hardware/google/gfxstream/guest/OpenglSystemCommon/HostConnection.cpp b/hardware/google/gfxstream/guest/OpenglSystemCommon/HostConnection.cpp
 index 18d472196..f7cb4c3a5 100644
 --- a/hardware/google/gfxstream/guest/OpenglSystemCommon/HostConnection.cpp
@@ -7028,7 +7096,6 @@ index 6c86e59b6..72f54aeab 100644
  }
  
 
-project hardware/interfaces/
 diff --git a/hardware/interfaces/boot/aidl/default/BootControl.cpp b/hardware/interfaces/boot/aidl/default/BootControl.cpp
 index b73c94dbfc..1957c6c53a 100644
 --- a/hardware/interfaces/boot/aidl/default/BootControl.cpp
@@ -7043,7 +7110,6 @@ index b73c94dbfc..1957c6c53a 100644
  
  ScopedAStatus BootControl::getActiveBootSlot(int32_t* _aidl_return) {
 
-project libcore/
 diff --git a/libcore/dalvik/src/main/java/dalvik/system/ZygoteHooks.java b/libcore/dalvik/src/main/java/dalvik/system/ZygoteHooks.java
 index 2bc3048c695..d108f1a1be0 100644
 --- a/libcore/dalvik/src/main/java/dalvik/system/ZygoteHooks.java
@@ -7138,7 +7204,6 @@ index a1e95fd7b0f..d9ef8b2887b 100644
  
    // Initialize the rest in the order in which they appear in Android.bp .
 
-project libnativehelper/
 diff --git a/libnativehelper/JniInvocation.c b/libnativehelper/JniInvocation.c
 index 17d0dfd..6ac953c 100644
 --- a/libnativehelper/JniInvocation.c
@@ -7182,7 +7247,6 @@ index 17d0dfd..6ac953c 100644
      }
    }
 
-project packages/modules/StatsD/
 diff --git a/packages/modules/StatsD/framework/java/android/util/StatsLog.java b/packages/modules/StatsD/framework/java/android/util/StatsLog.java
 index a765aafd..0afa8ae4 100644
 --- a/packages/modules/StatsD/framework/java/android/util/StatsLog.java
@@ -7220,7 +7284,74 @@ index a765aafd..0afa8ae4 100644
          statsEvent.release();
      }
 
-project packages/modules/adb/
+diff --git a/packages/modules/adb/daemon/main.cpp b/packages/modules/adb/daemon/main.cpp
+index 3d3f3024..10e1fe13 100644
+--- a/packages/modules/adb/daemon/main.cpp
++++ b/packages/modules/adb/daemon/main.cpp
+@@ -255,8 +255,17 @@ int adbd_main() {
+     watchdog::Initialize();
+ #endif
+ 
++    LOG(ERROR) << "KIKI-ADBD before auth init";
+     // adbd_auth_init will spawn a thread, so we need to defer it until after selinux transitions.
+-    adbd_auth_init();
++    // KikiAOSP's minimal test target intentionally has no framework-side
++    // adbd_auth socket. Skip the auth worker only when the device target
++    // explicitly opts into its local, unlocked TCP transport.
++    if (!android::base::GetBoolProperty("ro.kikiaosp.adb.noauth", false)) {
++        adbd_auth_init();
++    } else {
++        auth_required = false;
++    }
++    LOG(ERROR) << "KIKI-ADBD after auth init";
+ 
+     bool is_usb = false;
+ 
+@@ -268,6 +277,9 @@ int adbd_main() {
+     }
+ #endif
+ 
++    LOG(ERROR) << "KIKI-ADBD before transport setup";
++    LOG(ERROR) << "KIKI-ADBD listen_addrs=" << android::base::GetProperty("service.adb.listen_addrs", "<unset>")
++               << " tcp=" << android::base::GetProperty("service.adb.tcp.port", "<unset>");
+     // If one of these properties is set, also listen on that port.
+     // If one of the properties isn't set and we couldn't listen on usb, listen
+     // on the default port.
+@@ -305,6 +317,7 @@ int adbd_main() {
+         setup_adb(addrs);
+     }
+ 
++    LOG(ERROR) << "KIKI-ADBD after transport setup";
+     LOG(INFO) << "adbd started";
+ 
+     D("adbd_main(): pre init_jdwp()");
+diff --git a/packages/modules/adb/daemon/transport_socket_server.cpp b/packages/modules/adb/daemon/transport_socket_server.cpp
+index 950bb9dc..9b062a0d 100644
+--- a/packages/modules/adb/daemon/transport_socket_server.cpp
++++ b/packages/modules/adb/daemon/transport_socket_server.cpp
+@@ -123,6 +123,7 @@ void server_socket_thread(std::string_view addr) {
+             continue;
+         }
+         close_on_exec(serverfd.get());
++        LOG(ERROR) << "KIKI-ADBD socket bound " << addr;
+     }
+ 
+     while (true) {
+@@ -134,6 +135,7 @@ void server_socket_thread(std::string_view addr) {
+             fd = unique_fd{adb_socket_accept(serverfd, nullptr, nullptr)};
+         }
+         if (fd >= 0) {
++            LOG(ERROR) << "KIKI-ADBD socket accepted " << addr;
+             D("server: new connection on fd %d", fd.get());
+             close_on_exec(fd.get());
+             disable_tcp_nagle(fd.get());
+@@ -158,4 +160,4 @@ int init_socket_transport(atransport* t, unique_fd fd, int, bool) {
+     auto fd_connection = std::make_unique<FdConnection>(std::move(fd));
+     t->SetConnection(std::make_unique<BlockingConnectionAdapter>(std::move(fd_connection)));
+     return 0;
+-}
+\ No newline at end of file
++}
 diff --git a/packages/modules/adb/libs/adbconnection/Android.bp b/packages/modules/adb/libs/adbconnection/Android.bp
 index 3ae868c9..eaf1bc67 100644
 --- a/packages/modules/adb/libs/adbconnection/Android.bp
@@ -7237,7 +7368,6 @@ index 3ae868c9..eaf1bc67 100644
      host_supported: true,
      compile_multilib: "both",
 
-project prebuilts/abi-dumps/platform/
 diff --git a/prebuilts/abi-dumps/platform/current/64/arm/source-based/libadbconnection_client.so.lsdump b/prebuilts/abi-dumps/platform/current/64/arm/source-based/libadbconnection_client.so.lsdump
 deleted file mode 100644
 index 238c91b..0000000
@@ -12039,7 +12169,6 @@ index cb00083..0000000
 - "rvalue_reference_types" : []
 -}
 
-project system/apex/
 diff --git a/system/apex/apexd/apexd.rc b/system/apex/apexd/apexd.rc
 index 2dcc1f50..a1f8b145 100644
 --- a/system/apex/apexd/apexd.rc
@@ -12063,7 +12192,6 @@ index 2dcc1f50..a1f8b145 100644
      # apexd-bootstrap doesn't manage apexdata snapshot & restore, hence no need for other capabilities.
      capabilities SYS_ADMIN MKNOD
 
-project system/core/
 diff --git a/system/core/init/Android.bp b/system/core/init/Android.bp
 index 2783c9b64..655f2d7c6 100644
 --- a/system/core/init/Android.bp
@@ -12751,7 +12879,6 @@ index f29545c99..bdb8682db 100644
      # The stdio implementation for arm32/x86 stores fds in a short.
      # This is part of the ABI, so 32Ki is the max for nofile for ilp32.
 
-project system/hwservicemanager/
 diff --git a/system/hwservicemanager/AccessControl.cpp b/system/hwservicemanager/AccessControl.cpp
 index c8366ca..ae9a486 100644
 --- a/system/hwservicemanager/AccessControl.cpp
@@ -12832,7 +12959,6 @@ index 833efe3..8e5ec22 100644
  
      if (int rc = property_set("hwservicemanager.disabled", "false"); rc != 0) {
 
-project system/linkerconfig/
 diff --git a/system/linkerconfig/Android.bp b/system/linkerconfig/Android.bp
 index 1459eb5..a1bf8a9 100644
 --- a/system/linkerconfig/Android.bp
@@ -12846,7 +12972,6 @@ index 1459eb5..a1bf8a9 100644
      static_libs: [
          "linkerconfig_modules",
 
-project system/logging/
 diff --git a/system/logging/logd/Android.bp b/system/logging/logd/Android.bp
 index 64461090..1907c4e3 100644
 --- a/system/logging/logd/Android.bp
@@ -12860,7 +12985,6 @@ index 64461090..1907c4e3 100644
      init_rc: ["logd.rc"],
  
 
-project system/memory/lmkd/
 diff --git a/system/memory/lmkd/Android.bp b/system/memory/lmkd/Android.bp
 index a4f0f84..dfe8177 100644
 --- a/system/memory/lmkd/Android.bp
@@ -12874,7 +12998,6 @@ index a4f0f84..dfe8177 100644
      srcs: [
          "lmkd.cpp",
 
-project system/netd/
 diff --git a/system/netd/server/netd.rc b/system/netd/server/netd.rc
 index 38f7cd4c..e86dc28c 100644
 --- a/system/netd/server/netd.rc
@@ -12891,7 +13014,6 @@ index 38f7cd4c..e86dc28c 100644
  # Moved from external/android-clat/vendor-464xlat.rc. Since
  # clatd is modularized and shipped in apex, migrate the
 
-project system/security/
 diff --git a/system/security/keystore2/keystore2.rc b/system/security/keystore2/keystore2.rc
 index e669b18b..4a4b17c6 100644
 --- a/system/security/keystore2/keystore2.rc
@@ -12919,7 +13041,6 @@ index 9825583a..876acc2b 100644
      group prng_seeder
      stdio_to_kmsg
 
-project system/sepolicy/
 diff --git a/system/sepolicy/contexts/file_contexts_test_data b/system/sepolicy/contexts/file_contexts_test_data
 index 999976f71..2d2892a10 100644
 --- a/system/sepolicy/contexts/file_contexts_test_data
@@ -13044,7 +13165,6 @@ index 9ea31c926..ade59f2d5 100644
 +/(vendor|system/vendor)/bin/hw/android\.hardware\.graphics\.composer3-service\.ranchu    u:object_r:hal_graphics_composer_default_exec:s0
 +/(vendor|system/vendor)/bin/hw/android\.hardware\.graphics\.allocator-service\.ranchu    u:object_r:hal_graphics_allocator_default_exec:s0
 
-project system/vold/
 diff --git a/system/vold/Android.bp b/system/vold/Android.bp
 index 5f4b2b3..db3791f 100644
 --- a/system/vold/Android.bp
@@ -13067,64 +13187,3 @@ index bf72b0c..a694cc6 100644
      user root
 -    reboot_on_failure reboot,vold-failed
 +    # KikiAOSP bring-up: do not reboot when mainline guest lacks Android default fstab
-diff --git a/packages/modules/adb/daemon/main.cpp b/packages/modules/adb/daemon/main.cpp
-index 3d3f3024..10e1fe13 100644
---- a/packages/modules/adb/daemon/main.cpp
-+++ b/packages/modules/adb/daemon/main.cpp
-@@ -255,8 +255,17 @@ int adbd_main() {
-     watchdog::Initialize();
- #endif
- 
-+    LOG(ERROR) << "KIKI-ADBD before auth init";
-     // adbd_auth_init will spawn a thread, so we need to defer it until after selinux transitions.
--    adbd_auth_init();
-+    // KikiAOSP's minimal test target intentionally has no framework-side
-+    // adbd_auth socket. Skip the auth worker only when the device target
-+    // explicitly opts into its local, unlocked TCP transport.
-+    if (!android::base::GetBoolProperty("ro.kikiaosp.adb.noauth", false)) {
-+        adbd_auth_init();
-+    } else {
-+        auth_required = false;
-+    }
-+    LOG(ERROR) << "KIKI-ADBD after auth init";
- 
-     bool is_usb = false;
- 
-@@ -268,6 +275,7 @@ int adbd_main() {
-     }
- #endif
- 
-+    LOG(ERROR) << "KIKI-ADBD before transport setup";
-+    LOG(ERROR) << "KIKI-ADBD listen_addrs=" << android::base::GetProperty("service.adb.listen_addrs", "<unset>")
-+               << " tcp=" << android::base::GetProperty("service.adb.tcp.port", "<unset>");
-     // If one of these properties is set, also listen on that port.
-@@ -305,6 +313,7 @@ int adbd_main() {
-     }
- 
-+    LOG(ERROR) << "KIKI-ADBD after transport setup";
-     LOG(INFO) << "adbd started";
-diff --git a/packages/modules/adb/daemon/transport_socket_server.cpp b/packages/modules/adb/daemon/transport_socket_server.cpp
-index 950bb9dc..9b062a0d 100644
---- a/packages/modules/adb/daemon/transport_socket_server.cpp
-+++ b/packages/modules/adb/daemon/transport_socket_server.cpp
-@@ -123,6 +123,7 @@ void server_socket_thread(std::string_view addr) {
-             continue;
-         }
-         close_on_exec(serverfd.get());
-+        LOG(ERROR) << "KIKI-ADBD socket bound " << addr;
-     }
- 
-@@ -134,6 +135,7 @@ void server_socket_thread(std::string_view addr) {
-         }
-         if (fd >= 0) {
-+            LOG(ERROR) << "KIKI-ADBD socket accepted " << addr;
-             D("server: new connection on fd %d", fd.get());
-             close_on_exec(fd.get());
-             disable_tcp_nagle(fd.get());
-@@ -158,4 +160,4 @@ int init_socket_transport(atransport* t, unique_fd fd, int, bool) {
-     auto fd_connection = std::make_unique<FdConnection>(std::move(fd));
-     t->SetConnection(std::make_unique<BlockingConnectionAdapter>(std::move(fd_connection)));
-     return 0;
--}
-\ No newline at end of file
-+}

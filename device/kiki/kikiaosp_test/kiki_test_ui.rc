@@ -1,0 +1,8 @@
+service kiki_test_ui /system/bin/kiki_test_ui
+    class core
+    disabled
+    user root
+    seclabel u:r:init:s0
+
+on property:sys.kiki.hwc.ready=1
+    start kiki_test_ui

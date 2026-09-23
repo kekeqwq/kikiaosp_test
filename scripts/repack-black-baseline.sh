@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ $# -lt 3 || $# -gt 4 ]]; then
-    echo "usage: $0 BASE_STABLE_SYSTEM.img AOSP_ROOT OUTPUT.img [black|test-ui]" >&2
+    echo "usage: $0 BASE_STABLE_SYSTEM.img AOSP_ROOT OUTPUT.img [black|surface-test|test-ui]" >&2
     exit 2
 fi
 base=$(realpath "$1")
@@ -12,8 +12,12 @@ mode=${4:-black}
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 device_dir="$repo_dir/device/kiki/kikiaosp_test"
 flags="$aosp_root/out/target/product/kikiaosp_test/system/lib64/adbd_flags_c_lib.so"
+test_ui="$aosp_root/out/target/product/kikiaosp_test/system/bin/kiki_test_ui"
+surfaceflinger="$aosp_root/out/target/product/kikiaosp_test/system/bin/surfaceflinger"
+hwc_apex="$aosp_root/out/soong/.intermediates/device/generic/goldfish/hals/hwc3/com.android.hardware.graphics.composer.ranchu/android_common_com.android.hardware.graphics.composer.ranchu/com.android.hardware.graphics.composer.ranchu.apex"
 case "$mode" in
     black) scanout_binary=kiki_black_scanout; scanout_rc=kiki_black_scanout.rc; scanout_variant=black ;;
+    surface-test) scanout_binary=kiki_black_scanout; scanout_rc=kiki_black_scanout.rc; scanout_variant=black ;;
     test-ui) scanout_binary=kiki_test_scanout; scanout_rc=kiki_test_scanout.rc; scanout_variant=test-ui ;;
     *) echo "unknown repack mode: $mode" >&2; exit 2 ;;
 esac
@@ -25,6 +29,11 @@ test -f "$flags" || { echo "missing $flags" >&2; exit 2; }
 if [[ "$mode" == test-ui ]]; then
     test -f "$device_dir/kiki_test_scanout.rc" || { echo "missing kiki_test_scanout.rc" >&2; exit 2; }
 fi
+if [[ "$mode" == surface-test ]]; then
+    test -f "$test_ui" || { echo "missing $test_ui; build m kiki_test_ui first" >&2; exit 2; }
+    test -f "$surfaceflinger" || { echo "missing $surfaceflinger; build m surfaceflinger first" >&2; exit 2; }
+    test -f "$hwc_apex" || { echo "missing $hwc_apex; build the Ranchu composer APEX first" >&2; exit 2; }
+fi
 tmp=$(mktemp -d -p "$aosp_root/out" kiki-black.XXXXXX)
 trap 'rm -rf -- "$tmp"' EXIT
 mkdir -p "$tmp/root"
@@ -33,8 +42,16 @@ install -m 0755 "$device_dir/prebuilt/kiki-adbd" "$tmp/root/bin/adbd"
 install -m 0755 "$device_dir/kiki-adb-wait.sh" "$tmp/root/bin/kiki-adb-wait.sh"
 install -m 0644 "$device_dir/kiki-adb.rc" "$tmp/root/etc/init/kiki-adb.rc"
 install -m 0644 "$flags" "$tmp/root/lib64/adbd_flags_c_lib.so"
-"$repo_dir/scripts/build-black-scanout.sh" "$tmp/root/bin/$scanout_binary" "$scanout_variant"
+if [[ ! -x "$tmp/root/bin/$scanout_binary" ]]; then
+    "$repo_dir/scripts/build-black-scanout.sh" "$tmp/root/bin/$scanout_binary" "$scanout_variant"
+fi
 install -m 0644 "$device_dir/$scanout_rc" "$tmp/root/etc/init/$scanout_rc"
+if [[ "$mode" == surface-test ]]; then
+    install -D -m 0755 "$surfaceflinger" "$tmp/root/system/bin/surfaceflinger"
+    install -m 0755 "$test_ui" "$tmp/root/bin/kiki_test_ui"
+    install -m 0644 "$device_dir/kiki_test_ui.rc" "$tmp/root/etc/init/kiki_test_ui.rc"
+    install -D -m 0644 "$hwc_apex" "$tmp/root/vendor/apex/com.android.hardware.graphics.composer.ranchu.apex"
+fi
 if [[ "$mode" == test-ui ]]; then
     install -m 0644 "$device_dir/kiki_test_scanout.rc" "$tmp/root/etc/init/kiki_test_scanout.rc"
 fi

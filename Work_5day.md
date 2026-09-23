@@ -149,3 +149,30 @@ at least two changing output frames. It does not establish a
 SurfaceFlinger/HWC-presented Android UI: the test helper deliberately owns DRM
 master, and the known HWC present path remains a separate follow-up. QEMU was
 left running with the animated test image for live observation.
+
+## 2026-09-23 — SurfaceFlinger native-layer handoff test
+
+Added an optional `surface-test` repack path that uses the already-built
+`kiki_test_ui`, the Ranchu composer APEX, and (for callback tracing) the
+incrementally built SurfaceFlinger binary. The test client creates 53 color
+layers plus a moving box and submits animated transactions every 500 ms. This
+is a real SurfaceComposerClient workload, but successful transactions alone do
+not prove scanout.
+
+The Ranchu HWC APEX was built at its exact Soong output target, then activated
+from `/vendor/apex/com.android.hardware.graphics.composer.ranchu.apex`. Runtime
+logs confirm the AIDL composer service starts, opens DRM, detects the 640x480
+display, and SurfaceFlinger calls its callback-registration chain; the AIDL
+call reports success. However `dumpsys SurfaceFlinger --latency` still reports
+only the 16,666,666 ns refresh period, layer history remains `active=0`, and
+`FramebufferSurface frame-counter=0`. Thus no SurfaceFlinger frame reached the
+display. The test image SHA-256 is
+`d24ffff41364f60265dfe6a090025abdfdfe88314fdb6236d0bb78049539b8eb`.
+
+This does not satisfy the SurfaceFlinger/HWC rendering goal and is not a
+two-frame UI proof. The next investigation is the HWC callback transaction:
+the client-side AIDL registration returns success, but the expected
+server-side callback/VSYNC evidence is absent. Keep the direct-KMS animated
+proof as a separate lower-layer milestone, not as a substitute for HWC
+presentation. The test QEMU process was stopped after collecting the negative
+frame-counter evidence.

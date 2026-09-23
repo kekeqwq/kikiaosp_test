@@ -141,3 +141,17 @@ cc_prebuilt_binary {
     installable: true,
     check_elf_files: false,
 }
+
+cc_binary {
+    name: "kiki_test_ui",
+    srcs: ["kiki_test_ui.cpp"],
+    shared_libs: [
+        "libbinder",
+        "libcutils",
+        "libgui",
+        "libnativewindow",
+        "libui",
+        "libutils",
+    ],
+    compile_multilib: "64",
+}
