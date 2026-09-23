@@ -99,3 +99,18 @@ The frozen base system and ramdisk are now published as the GitHub release
 SHA-256 digests. This keeps the 491 MB binary out of Git history while making
 the repository's repack script usable on a new development host. The final
 QEMU process remained alive with ADB in `device` state during the release upload.
+
+## 2026-09-23 — final Windows display-window check
+
+The QEMU launcher was corrected to show the GTK display window while keeping
+the auxiliary process console hidden. A fresh launch left exactly one visible
+QEMU window. A captured window image showed a uniformly black frame, with no
+`Display output is not active` overlay. This is the intended minimal active
+scanout proof; it is not evidence of a rendered Android desktop or a
+SurfaceFlinger-owned frame.
+
+During this observation, `127.0.0.1:5555` remained in ADB `device` state. The
+device reported `ro.product.device=kikiaosp_test`,
+`init.svc.kiki_black_scanout=running`, and kernel `7.3.0-rc4-4k`; shell commands
+including `id` and `uname -r` succeeded. The QEMU process was left running for
+the user to inspect. No claim is made here about a half-hour soak test.
