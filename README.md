@@ -301,7 +301,8 @@ Both captures are direct QEMU monitor screendumps of Android's displayed
 output. Four consecutive follow-up captures showed the text and background;
 one earlier sample immediately after the first successful frame showed only
 the square, so this is proof of animated rendering—not yet a long-duration
-stability or high-refresh result. The guest serial log recorded 353 successful
-animation transactions over about 211 seconds. The broader path is now proven
-for native solid-color layers; ordinary app-buffer/client-target composition,
-input, and high-refresh behavior remain future work.
+stability or high-refresh result. At the last check, the guest serial log had
+recorded 1,210 successful animation transactions through 658 guest seconds and
+QEMU was still running. The broader path is now proven for native solid-color
+layers; ordinary app-buffer/client-target composition, input, and high-refresh
+behavior remain future work.

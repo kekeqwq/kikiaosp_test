@@ -285,9 +285,9 @@ Date: 2026-09-23
 - The effective target rebuild after sync was 7 Ninja actions and about 19 s;
   this was not a full AOSP build. Image repack passed the EROFS check.
 - Local Windows ARM QEMU used upstream QEMU + WHPX, 640×480 virtio-gpu, and
-  guest HWC mode. The serial log recorded 353 `frame committed ... status=0`
-  transactions over about 211 guest seconds. QEMU exited later with empty
-  stdout/stderr files; no host-side QEMU error was recorded.
+  guest HWC mode. At the last check the serial log recorded 1,210
+  `frame committed ... status=0` transactions through 658 guest seconds;
+  QEMU remained running and its stderr file was empty.
 - Direct monitor captures are saved as
   `docs/evidence/kiki-native-test-ok-frame-1.png` and
   `docs/evidence/kiki-native-test-ok-frame-2.png`. Their PNG hashes are
