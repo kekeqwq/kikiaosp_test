@@ -43,6 +43,37 @@ $args = @(
     '-serial',("file:$serialLog"),'-snapshot'
 )
 $process = Start-Process -FilePath $qemuExe -ArgumentList $args -WindowStyle Hidden -RedirectStandardError $stderrLog -PassThru
+Add-Type @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class KikiGtkWindow {
+    public delegate bool EnumProc(IntPtr hwnd, IntPtr extra);
+    [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc callback, IntPtr extra);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+    [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int count);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int command);
+}
+'@
+for ($attempt = 0; $attempt -lt 40; $attempt++) {
+    $gtkWindow = [IntPtr]::Zero
+    $callback = [KikiGtkWindow+EnumProc]{ param($hwnd,$extra)
+        $windowPid = [uint32]0
+        [KikiGtkWindow]::GetWindowThreadProcessId($hwnd,[ref]$windowPid) | Out-Null
+        if ($windowPid -eq $process.Id) {
+            $title = [System.Text.StringBuilder]::new(128)
+            [KikiGtkWindow]::GetWindowText($hwnd,$title,128) | Out-Null
+            if ($title.ToString() -eq 'QEMU') { $script:gtkWindow = $hwnd }
+        }
+        return $true
+    }
+    [KikiGtkWindow]::EnumWindows($callback,[IntPtr]::Zero) | Out-Null
+    if ($gtkWindow -ne [IntPtr]::Zero) {
+        [KikiGtkWindow]::ShowWindow($gtkWindow,5) | Out-Null
+        break
+    }
+    Start-Sleep -Milliseconds 250
+}
 "QEMU PID=$($process.Id)"
 "Serial log: $serialLog"
 "ADB: adb connect 127.0.0.1:${AdbPort}"
