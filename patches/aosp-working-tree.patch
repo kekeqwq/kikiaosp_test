@@ -746,6 +746,56 @@ index 9eb27da5..59caf2d5 100644
      const std::string mode = ::android::base::GetProperty("ro.vendor.hwcomposer.mode", "");
      DEBUG_LOG("%s: sysprop ro.vendor.hwcomposer.mode is %s", __FUNCTION__, mode.c_str());
      return mode == "client";
+diff --git a/device/generic/goldfish/hals/hwc3/Composer.cpp b/device/generic/goldfish/hals/hwc3/Composer.cpp
+index 96fd85f8..9fec78f2 100644
+--- a/device/generic/goldfish/hals/hwc3/Composer.cpp
++++ b/device/generic/goldfish/hals/hwc3/Composer.cpp
+@@ -24,6 +24,7 @@
+ namespace aidl::android::hardware::graphics::composer3::impl {
+ 
+ ndk::ScopedAStatus Composer::createClient(std::shared_ptr<IComposerClient>* outClient) {
++    ALOGE("KikiAOSP trace: Composer::createClient entered");
+     DEBUG_LOG("%s", __FUNCTION__);
+ 
+     std::unique_lock<std::mutex> lock(mClientMutex);
+@@ -110,4 +111,4 @@ ndk::ScopedAStatus Composer::getCapabilities(std::vector<Capability>* caps) {
+     return binder;
+ }
+ 
+-}  // namespace aidl::android::hardware::graphics::composer3::impl
+\ No newline at end of file
++}  // namespace aidl::android::hardware::graphics::composer3::impl
+diff --git a/device/generic/goldfish/hals/hwc3/ComposerClient.cpp b/device/generic/goldfish/hals/hwc3/ComposerClient.cpp
+index 0a68cb18..2cb7f55c 100644
+--- a/device/generic/goldfish/hals/hwc3/ComposerClient.cpp
++++ b/device/generic/goldfish/hals/hwc3/ComposerClient.cpp
+@@ -16,6 +16,8 @@
+ 
+ #include "ComposerClient.h"
+ 
++#include <cstdio>
++
+ #include <aidlcommonsupport/NativeHandle.h>
+ #include <android/binder_ibinder_platform.h>
+ 
+@@ -113,6 +115,7 @@ ComposerClient::~ComposerClient() {
+ }
+ 
+ HWC3::Error ComposerClient::init() {
++    ALOGE("KikiAOSP trace: ComposerClient::init entered");
+     DEBUG_LOG("%s", __FUNCTION__);
+ 
+     HWC3::Error error = HWC3::Error::None;
+@@ -443,6 +446,9 @@ ndk::ScopedAStatus ComposerClient::getDisplayDecorationSupport(
+ 
+ ndk::ScopedAStatus ComposerClient::registerCallback(
+     const std::shared_ptr<IComposerCallback>& callback) {
++    ALOGE("KikiAOSP trace: ComposerClient::registerCallback entered");
++    std::fprintf(stderr, "KIKI-COMPOSERCLIENT registerCallback entered\n");
++    std::fflush(stderr);
+     DEBUG_LOG("%s", __FUNCTION__);
+ 
+     const bool isFirstRegisterCallback = mCallbacks == nullptr;
 diff --git a/device/generic/goldfish/hals/hwc3/ComposerResources.cpp b/device/generic/goldfish/hals/hwc3/ComposerResources.cpp
 index 8083b45d..c47f9059 100644
 --- a/device/generic/goldfish/hals/hwc3/ComposerResources.cpp
@@ -1231,7 +1281,7 @@ index b665d99b..2dfccb14 100644
      return HWC3::Error::None;
  }
 diff --git a/device/generic/goldfish/hals/hwc3/VsyncThread.cpp b/device/generic/goldfish/hals/hwc3/VsyncThread.cpp
-index 0ec1b23e..7541223d 100644
+index 0ec1b23e..cd6c7e91 100644
 --- a/device/generic/goldfish/hals/hwc3/VsyncThread.cpp
 +++ b/device/generic/goldfish/hals/hwc3/VsyncThread.cpp
 @@ -137,6 +137,7 @@ void VsyncThread::threadLoop() {
@@ -1242,18 +1292,40 @@ index 0ec1b23e..7541223d 100644
      TimePoint previousLog = std::chrono::steady_clock::now();
  
      while (!mShuttingDown.load()) {
-@@ -156,6 +157,11 @@ void VsyncThread::threadLoop() {
+@@ -144,6 +145,8 @@ void VsyncThread::threadLoop() {
+         TimePoint nextVsync = GetNextVsyncInPhase(vsyncPeriod, mPreviousVsync, now);
  
-         if (mVsyncEnabled) {
-             if (mCallbacks) {
+         std::this_thread::sleep_until(nextVsync);
++        std::shared_ptr<IComposerCallback> callbacks;
++        bool vsyncEnabled;
+         {
+             std::unique_lock<std::mutex> lock(mStateMutex);
+ 
+@@ -152,12 +155,21 @@ void VsyncThread::threadLoop() {
+             // Display has finished refreshing at previous vsync period. Update the
+             // vsync period if there was a pending update.
+             vsyncPeriod = updateVsyncPeriodLocked(mPreviousVsync);
++            // setCallbacks() and setVsyncEnabled() use this mutex too. Snapshot
++            // both values here so the worker never races their updates.
++            callbacks = mCallbacks;
++            vsyncEnabled = mVsyncEnabled;
+         }
+ 
+-        if (mVsyncEnabled) {
+-            if (mCallbacks) {
++        if (vsyncEnabled) {
++            if (callbacks) {
 +                if (!kikiLoggedFirstCallback) {
 +                    ALOGI("KikiAOSP software VSYNC callback active for display:%" PRId64,
 +                          mDisplayId);
 +                    kikiLoggedFirstCallback = true;
 +                }
                  DEBUG_LOG("%s: for display:%" PRIu64 " calling vsync", __FUNCTION__, mDisplayId);
-                 mCallbacks->onVsync(mDisplayId, asNanosTimePoint(nextVsync),
+-                mCallbacks->onVsync(mDisplayId, asNanosTimePoint(nextVsync),
++                callbacks->onVsync(mDisplayId, asNanosTimePoint(nextVsync),
                                      static_cast<int32_t>(asNanosDuration(vsyncPeriod)));
+             }
+         }
 diff --git a/device/generic/goldfish/hals/hwc3/hwc3.rc b/device/generic/goldfish/hals/hwc3/hwc3.rc
 index ebb29483..c9bbf699 100644
 --- a/device/generic/goldfish/hals/hwc3/hwc3.rc

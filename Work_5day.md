@@ -176,3 +176,29 @@ server-side callback/VSYNC evidence is absent. Keep the direct-KMS animated
 proof as a separate lower-layer milestone, not as a substitute for HWC
 presentation. The test QEMU process was stopped after collecting the negative
 frame-counter evidence.
+
+## 2026-09-23 — HWC software-VSYNC synchronization test
+
+The native layer test is alive: `kiki_test_ui` creates 53 text color layers plus
+`KikiTestMovingBox`; serial output reports `TEST OK layers=54 animation=ready`
+and transaction commits about every 0.52 seconds, while SurfaceFlinger dumpsys
+shows the moving box at changing coordinates. This confirms transaction/layer
+state updates, but not display presentation.
+
+Found a C++ data race in the Ranchu software-VSYNC worker: `mVsyncEnabled` and
+`mCallbacks` were written under `mStateMutex` but read without it. The worker
+now snapshots both under the same lock before dispatching callbacks. AOSP
+integration audit still passes (152 tracked patch paths, 5 overlays), and the
+incremental HWC/APEX build succeeded in 19 seconds. Repacked test image SHA-256:
+`53462e015080c1d178ad2be0a2b53ee8e6a584c776c695f7ff5811effed6836b`.
+
+The test remains negative for real UI output: despite the synchronization fix,
+`layerHistory={size=54, active=0}`, `FramebufferSurface frame-counter=0`, and
+`dumpsys SurfaceFlinger --latency` shows only the 16,666,666 ns refresh period.
+There is no logged `KikiAOSP software VSYNC callback active` event. So the data
+race was real but not the sole blocker. Do not claim the requested animated UI
+frames; the older direct-KMS two-frame capture remains a separate milestone.
+Next trace should establish whether the AIDL `IComposerClient::registerCallback`
+transaction actually reaches the active ComposerClient object, then follow the
+first `onVsync` into SurfaceFlinger scheduling. This QEMU test was stopped after
+confirming the zero-frame state.
