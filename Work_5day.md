@@ -39,3 +39,9 @@ ro.product.name=kikiaosp_test_arm64_phone
 The stable black-screen boot remains intact. The QEMU process was stopped after
 the regression test. All functional changes are committed in this repository;
 the corresponding kernel remains the rc4 artifact from `kikiaosp_kernel`.
+
+A subsequent approximately two-minute run kept the ADB transport in `device`
+state and produced no kernel panic or kernel BUG; QEMU was then terminated.
+SurfaceFlinger still reports the previously known EGL/HWC abort loop, so this
+checkpoint claims a stable kernel/ADB transport and black output, not a visible
+desktop or a completed scanout path.
