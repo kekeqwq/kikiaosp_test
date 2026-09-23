@@ -260,3 +260,44 @@ HWC → DRM/KMS → QEMU display path for solid-color layers. It does not yet
 prove arbitrary app-buffer/client-target composition, launcher/input, sustained
 stability, or high-refresh operation. The test QEMU window was deliberately
 left open for live confirmation.
+
+## Native animated `TEST OK` UI
+
+Date: 2026-09-23
+
+- Added readable `TEST OK` using a 5×7 glyph set rasterized as 53 horizontal
+  solid-color SurfaceComposer effect layers, plus the existing dark background
+  and moving square. The square's position and color update every 500 ms. No
+  Launcher, application framework UI stack, or additional system service was
+  introduced.
+- Kept the experiment in the `surface-test` image mode, preserving the frozen
+  black/ADB baseline. The tested image is
+  `/home/keke/kiki-kernel-system-sf-guest-hwc3-map-ui-test-ok-v3.img`, SHA-256
+  `bfe1c79716c623f684cb7376f9791c5df63ffa08545f0303fcb9c6e08d166f38`.
+- Important build workflow finding: the project repository and AOSP checkout
+  are separate directories. Editing only the project repo left
+  `/home/keke/aosp-master/device/kiki/kikiaosp_test/kiki_test_ui.cpp` stale;
+  `m kiki_test_ui` then reported success with zero actions and retained the old
+  binary. After syncing the source, Ninja compiled the intended file and the
+  resulting binary contained the `text-strokes` marker. Added
+  `scripts/sync-device-tree.sh` and documented it in README to prevent another
+  stale-copy build.
+- The effective target rebuild after sync was 7 Ninja actions and about 19 s;
+  this was not a full AOSP build. Image repack passed the EROFS check.
+- Local Windows ARM QEMU used upstream QEMU + WHPX, 640×480 virtio-gpu, and
+  guest HWC mode. The serial log recorded 353 `frame committed ... status=0`
+  transactions over about 211 guest seconds. QEMU exited later with empty
+  stdout/stderr files; no host-side QEMU error was recorded.
+- Direct monitor captures are saved as
+  `docs/evidence/kiki-native-test-ok-frame-1.png` and
+  `docs/evidence/kiki-native-test-ok-frame-2.png`. Their PNG hashes are
+  `78a9be76cd1655c1ea7dc116b920a6109cb9065276c908ac2ad93e36fcc33979` and
+  `4aaaf0fde4d3e0db58ccd834adcae4d9823ab12a5ca4951c657ff459dfd98158`.
+  The corresponding QEMU PPM hashes are
+  `678406519929349d192b7e7fd9eaacf978f6b70640ccb2cbbf36bd4a63d99060` and
+  `a4df9098b298373cf4c9f3f7202c1a1d62c15f51743586c3c30a8f5dbfeea128`.
+- One early screenshot sample showed only the moving square. Four consecutive
+  later screendumps showed the full text, background, and square at changing
+  positions/colors. This meets the minimal two-frame proof, but a 30-minute
+  stability run, high-refresh behavior, and ordinary app-buffer/client-target
+  composition are still unverified.

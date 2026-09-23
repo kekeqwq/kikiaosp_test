@@ -70,7 +70,11 @@ if [[ "$mode" == surface-test ]]; then
     install -D -m 0644 "$runtime_apex" "$tmp/root/system/apex/com.android.runtime.apex"
     install -D -m 0644 "$crash_dump_policy" "$tmp/root/system/etc/seccomp_policy/crash_dump.arm64.policy"
     install -D -m 0644 "$tombstoned_rc" "$tmp/root/system/etc/init/tombstoned.rc"
-    install -m 0755 "$test_ui" "$tmp/root/bin/kiki_test_ui"
+    # init starts this service via /system/bin/kiki_test_ui. Install through
+    # that path so it also works if system/bin is not a symlink to /bin.
+    rm -f -- "$tmp/root/bin/kiki_test_ui"
+    install -D -m 0755 "$test_ui" "$tmp/root/system/bin/kiki_test_ui"
+    cmp "$test_ui" "$tmp/root/system/bin/kiki_test_ui"
     install -m 0644 "$device_dir/kiki_test_ui.rc" "$tmp/root/etc/init/kiki_test_ui.rc"
     # The stable flat image starts HWC directly from /system/bin/hwcomposer;
     # adding an unactivated vendor APEX does not affect the running service.

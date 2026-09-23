@@ -22,6 +22,7 @@ patches/aosp-working-tree.patch  tracked AOSP source changes
 patches/aosp-render-output.patch raster client-target bring-up changes
 overlays/                        required formerly-untracked source files
 scripts/apply-aosp-integration.sh
+scripts/sync-device-tree.sh
 ```
 
 The upstream AOSP checkout is never committed here. Apply this tree and patch set explicitly to a clean checkout.
@@ -70,6 +71,16 @@ repo status
 ```
 
 The script installs `device/kiki/kikiaosp_test`, applies the graphics/runtime patch set, and copies the overlays. To return to pure upstream, use a fresh checkout or restore it from version control; do not commit these changes upstream.
+
+After editing files under `device/kiki/kikiaosp_test/` in this repository,
+sync that device tree into the separate AOSP working tree before building:
+
+```bash
+cd ~/projects/kikiaosp_test
+scripts/sync-device-tree.sh ~/aosp-master
+```
+
+This copies the repository's device tree without touching the rest of AOSP.
 
 ## 4. Build Android
 
@@ -242,55 +253,55 @@ options. The window remains open until you close QEMU. After `adb connect
 127.0.0.1:5555`, verify `adb shell getprop ro.product.device` returns
 `kikiaosp_test`. The serial log must contain `KIKI-BLACK scanout active`.
 
-## 12. Native two-frame UI proof (2026-09-23)
+## 12. Native animated `TEST OK` UI proof (2026-09-23)
 
-The first visible Android UI is deliberately only two native solid-color
-SurfaceComposer layers: a dark background and a 48×48 animated square. The
-square changes position and color every 500 ms. This adds no launcher or
-optional Android framework service.
+The minimal visible UI now renders readable `TEST OK` text and an animated
+square using only native SurfaceComposer solid-color effect layers. The text is
+a 5×7 bitmap font represented by 53 horizontal color strokes; the composition
+also has one dark background and one moving square. The square changes position
+and color every 500 ms. No Launcher, Android app UI framework, or new system
+service was added; the existing opt-in `kiki_test_ui` init service is used.
 
-For a fresh AOSP tree, apply the repository integration patches, then build the
-active (non-APEX) Ranchu composer service. The frozen image runs this service
-as `/system/bin/hwcomposer`; placing a composer APEX in `/vendor/apex` alone
-does not replace that process.
+The upstream AOSP tree and this repository are separate working directories.
+After changing the device tree, sync it before compiling so Soong does not
+silently reuse an older AOSP-side copy:
 
 ```bash
+cd ~/projects/kikiaosp_test
+scripts/sync-device-tree.sh ~/aosp-master
+cd ~/aosp-master
 source build/envsetup.sh
 lunch kikiaosp_test_arm64_phone-trunk_staging-userdebug
-m out/soong/.intermediates/device/generic/goldfish/hals/hwc3/android.hardware.graphics.composer3-service.ranchu/android_vendor_arm64_armv8-a/android.hardware.graphics.composer3-service.ranchu
+m kiki_test_ui
 cd ~/projects/kikiaosp_test
 scripts/repack-black-baseline.sh \
   ~/kiki-kernel-system-black-adb.img \
   ~/aosp-master \
-  ~/kiki-kernel-system-sf-guest-hwc3-map-ui.img surface-test
+  ~/kiki-kernel-system-sf-guest-hwc3-map-ui-test-ok.img surface-test
 ```
 
-On Windows, boot that image with `androidboot.hardware.hwcomposer.mode=guest`,
-640×480 virtio-gpu, and upstream QEMU's `-display gtk,gl=off`. In the KikiEmu
-workspace the tested command is:
+The frozen image uses the active non-APEX Ranchu composer at
+`/system/bin/hwcomposer`; the guest minigbm mapper's CPU lock returns `-38`
+(`ENOSYS`), so the opt-in HWC path maps the synchronized composer dma-buf and
+submits it through the existing DRM flush path. Keep `mode=guest` opt-in; the
+frozen black-baseline boot remains unchanged.
 
-```powershell
-.\tools\run_kiki_matched_libs_test.ps1 `
-  -ImageName 'kiki-kernel-system-sf-guest-hwc3-map-ui.img' `
-  -HwcMode guest
-```
-
-The guest minigbm mapper currently returns `-38` (`ENOSYS`) for CPU locking the
-composer output buffer. In this opt-in test mode the composer falls back to a
-synchronized dma-buf `mmap`, writes its solid-color layer composition there,
-and submits that buffer through its existing DRM flush path. The ordinary
-mapper path is unchanged when it works.
-
-Repacked test-image SHA-256:
-`cd87e319bf2322c41c8f0062b0ff2cc134d25873b3d08ad0f2199b3ab4be710f`.
-QEMU monitor evidence is stored in `docs/evidence/`:
+The tested image SHA-256 is
+`bfe1c79716c623f684cb7376f9791c5df63ffa08545f0303fcb9c6e08d166f38`.
+Windows QEMU used upstream `qemu-system-aarch64`, WHPX, `virtio-gpu-pci`
+640×480, GTK `gl=off`, and `androidboot.hardware.hwcomposer.mode=guest`.
+Evidence PNGs are saved in `docs/evidence/`:
 
 | Evidence PNG | PNG SHA-256 | Source QEMU PPM SHA-256 | Visible result |
 | --- | --- | --- | --- |
-| `kiki-native-ui-frame-1.png` | `2ae7eb1a61b62a439125dd3c4f8866ccad3d45119bde8586470dd20d00ba826d` | `415cc6a70bfbb5f61f1cbf6b24e63ff0b811fe1b3dc32a109e200e589c275066` | dark background, square near center |
-| `kiki-native-ui-frame-2.png` | `6e858d44fbd40a23900f5638d18f08ad8d643a88b9b36ffb3faccee76b7b4251` | `e45fa412a826659ecc707ca971003ec3bc35510dd0fd2ae5cfe330dbeeb537ee` | dark background, square at a different position/color |
+| `kiki-native-test-ok-frame-1.png` | `78a9be76cd1655c1ea7dc116b920a6109cb9065276c908ac2ad93e36fcc33979` | `678406519929349d192b7e7fd9eaacf978f6b70640ccb2cbbf36bd4a63d99060` | `TEST OK`, square at one position/color |
+| `kiki-native-test-ok-frame-2.png` | `4aaaf0fde4d3e0db58ccd834adcae4d9823ab12a5ca4951c657ff459dfd98158` | `a4df9098b298373cf4c9f3f7202c1a1d62c15f51743586c3c30a8f5dbfeea128` | `TEST OK`, square moved and changed color |
 
-The QEMU screen captures themselves (not just SurfaceFlinger or app logs) are
-different. The guest stays ADB-accessible, and its `/system/bin/hwcomposer`
-hash matches the newly built Ranchu service. Keep `mode=guest` opt-in; the
-frozen black-baseline boot remains the default.
+Both captures are direct QEMU monitor screendumps of Android's displayed
+output. Four consecutive follow-up captures showed the text and background;
+one earlier sample immediately after the first successful frame showed only
+the square, so this is proof of animated rendering—not yet a long-duration
+stability or high-refresh result. The guest serial log recorded 353 successful
+animation transactions over about 211 seconds. The broader path is now proven
+for native solid-color layers; ordinary app-buffer/client-target composition,
+input, and high-refresh behavior remain future work.
