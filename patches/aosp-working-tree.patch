@@ -13068,12 +13068,14 @@ index bf72b0c..a694cc6 100644
 -    reboot_on_failure reboot,vold-failed
 +    # KikiAOSP bring-up: do not reboot when mainline guest lacks Android default fstab
 diff --git a/packages/modules/adb/daemon/main.cpp b/packages/modules/adb/daemon/main.cpp
-index 3d3f3024..19ad9472 100644
+index 3d3f3024..72ef6f41 100644
 --- a/packages/modules/adb/daemon/main.cpp
 +++ b/packages/modules/adb/daemon/main.cpp
-@@ -256,7 +256,12 @@ int adbd_main() {
+@@ -255,8 +255,15 @@ int adbd_main() {
+     watchdog::Initialize();
  #endif
  
++    LOG(ERROR) << "KIKI-ADBD before auth init";
      // adbd_auth_init will spawn a thread, so we need to defer it until after selinux transitions.
 -    adbd_auth_init();
 +    // KikiAOSP's minimal test target intentionally has no framework-side
@@ -13082,5 +13084,18 @@ index 3d3f3024..19ad9472 100644
 +    if (!android::base::GetBoolProperty("ro.kikiaosp.adb.noauth", false)) {
 +        adbd_auth_init();
 +    }
++    LOG(ERROR) << "KIKI-ADBD after auth init";
  
      bool is_usb = false;
+ 
+@@ -268,6 +275,7 @@ int adbd_main() {
+     }
+ #endif
+ 
++    LOG(ERROR) << "KIKI-ADBD before transport setup";
+     // If one of these properties is set, also listen on that port.
+@@ -305,6 +313,7 @@ int adbd_main() {
+     }
+ 
++    LOG(ERROR) << "KIKI-ADBD after transport setup";
+     LOG(INFO) << "adbd started";
