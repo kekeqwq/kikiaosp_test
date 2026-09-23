@@ -301,3 +301,48 @@ Date: 2026-09-23
   positions/colors. This meets the minimal two-frame proof, but a 30-minute
   stability run, high-refresh behavior, and ordinary app-buffer/client-target
   composition are still unverified.
+
+## 2026-09-23 — ordinary GraphicBuffer prototype (build pending)
+
+The next milestone is to replace only the moving square's synthetic
+`SOLID_COLOR` effect layer with a normal buffer-backed SurfaceFlinger layer;
+the readable text and dark background remain unchanged so the visual check is
+easy. The EGL/BufferQueue experiment did not queue a buffer: ANGLE reported a
+native-window/swapchain ownership conflict and SurfaceFlinger/HWC never listed
+the EGL buffer as an active layer. The prototype therefore allocates two
+ordinary `GraphicBuffer`s, writes two distinct opaque colors through their
+dma-buf fds, and submits them directly with `Transaction::setBuffer` on a
+normal `SurfaceControl`. Alternating the two immutable buffers should provide
+the required two visibly different buffer frames without using EGL.
+
+HWC already accepts `Composition::DEVICE`, but its source-buffer path had no
+fallback when gralloc mapper locking failed (the composition target already
+has a dma-buf mapping fallback). Added a separate AOSP integration patch that
+keeps mapper lock as the primary path and falls back only for one-plane,
+linear `ABGR8888`/`XBGR8888` buffers with an in-bounds crop. The fallback uses
+read-only `mmap` bracketed by `DMA_BUF_IOCTL_SYNC`; unsupported layouts still
+fail closed. The patch is isolated in
+`patches/aosp-hwc-device-buffer-map.patch`, is applied after the existing HWC
+output-buffer patch, and is included in the AOSP tracked-path audit. Dry-run,
+patch application, device-tree sync, and the 155-path AOSP integration audit
+all passed.
+
+Important build status: no binary or image has been produced from this
+prototype yet. AOSP Soong had to regenerate its large product graph after the
+earlier temporary `Android.bp` header dependency was added and then removed.
+The graph process reached about 31 GiB RSS on the 47 GiB host, leaving less
+than 1 GiB available and reporting memory stalls. Three attempts were
+deliberately interrupted before C++ compilation to avoid destabilizing the
+build VM. The generated product Ninja manifest is currently incomplete and
+reports unexpected EOF; it must be regenerated before the incremental HWC/UI
+targets can run. Reducing `GOMEMLIMIT` and Go parallelism did not keep the
+actual process RSS under the available-memory ceiling. The user chose to
+continue with the current allocation and use swap for the reduced-speed build.
+Rerun the two targets in the existing `kiki-hwc-guest` tmux session while
+watching host responsiveness and remaining swap; a completed Soong graph
+should then allow the incremental C++ actions to proceed.
+
+The previously tested v3 `TEST OK` image is untouched and remains the visual
+baseline. The current local Windows QEMU still runs that image. This prototype
+has not been repacked, booted, or confirmed on screen; its source and patch
+remain unvalidated until a successful build and QEMU test.

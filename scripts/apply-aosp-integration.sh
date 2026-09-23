@@ -11,6 +11,7 @@ patch -d "$AOSP_ROOT" -p1 --forward < "$REPO_ROOT/patches/aosp-render-output.pat
 patch -d "$AOSP_ROOT" -p1 --forward < "$REPO_ROOT/patches/aosp-sf-layerhandle-diagnostics.patch"
 patch -d "$AOSP_ROOT" -p1 --forward < "$REPO_ROOT/patches/aosp-hwc-guest-composer.patch"
 patch -d "$AOSP_ROOT" -p1 --forward < "$REPO_ROOT/patches/aosp-hwc-dmabuf-map.patch"
+patch -d "$AOSP_ROOT" -p1 --forward < "$REPO_ROOT/patches/aosp-hwc-device-buffer-map.patch"
 while IFS= read -r -d '' src; do
   rel=${src#"$REPO_ROOT/overlays/"}
   mkdir -p "$AOSP_ROOT/$(dirname "$rel")"

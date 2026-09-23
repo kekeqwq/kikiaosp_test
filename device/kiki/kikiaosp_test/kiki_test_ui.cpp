@@ -1,15 +1,25 @@
 #include <algorithm>
+#include <EGL/egl.h>
+#include <GLES2/gl2.h>
+#include <android/native_window.h>
+#include <errno.h>
 #include <fcntl.h>
+#include <linux/dma-buf.h>
+#include <optional>
 #include <stdint.h>
 #include <stdio.h>
 #include <string>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <vector>
 #include <unistd.h>
 
 #include <android/gui/ISurfaceComposerClient.h>
+#include <gui/Surface.h>
 #include <gui/SurfaceComposerClient.h>
 #include <math/vec3.h>
 #include <ui/DisplayMode.h>
+#include <ui/GraphicBuffer.h>
 #include <ui/LayerStack.h>
 #include <ui/PixelFormat.h>
 #include <ui/Rect.h>
@@ -41,6 +51,183 @@ static sp<SurfaceControl> makeColorLayer(const sp<SurfaceComposerClient>& client
                                          const char* name) {
     return client->createSurface(String8(name), 0, 0, PIXEL_FORMAT_RGBA_8888,
                                  ISurfaceComposerClient::eFXSurfaceEffect);
+}
+
+struct EglBuffer {
+    EGLDisplay display = EGL_NO_DISPLAY;
+    EGLSurface surface = EGL_NO_SURFACE;
+    EGLContext context = EGL_NO_CONTEXT;
+    sp<Surface> window;
+    bool initialized = false;
+};
+
+static void destroyEglBuffer(EglBuffer* egl) {
+    if (egl->display != EGL_NO_DISPLAY && egl->initialized) {
+        eglMakeCurrent(egl->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        if (egl->surface != EGL_NO_SURFACE) eglDestroySurface(egl->display, egl->surface);
+        if (egl->context != EGL_NO_CONTEXT) eglDestroyContext(egl->display, egl->context);
+        eglTerminate(egl->display);
+    }
+    *egl = EglBuffer{};
+}
+
+static bool drawEglBuffer(EglBuffer* egl, int width, int height,
+                          float red, float green, float blue) {
+    for (GLenum staleError = glGetError(); staleError != GL_NO_ERROR; staleError = glGetError()) {
+        logStatus("stale GLES error", 0, static_cast<int>(staleError));
+    }
+    glViewport(0, 0, width, height);
+    glDisable(GL_SCISSOR_TEST);
+    glClearColor(red, green, blue, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    const GLenum glError = glGetError();
+    if (glError != GL_NO_ERROR) {
+        logStatus("GLES clear failed", 0, static_cast<int>(glError));
+        return false;
+    }
+    if (!eglSwapBuffers(egl->display, egl->surface)) {
+        logStatus("EGL swap-buffers failed", 0, eglGetError());
+        return false;
+    }
+    const GLenum swapError = glGetError();
+    if (swapError != GL_NO_ERROR) {
+        logStatus("GLES error after EGL swap", 0, static_cast<int>(swapError));
+    }
+    return true;
+}
+
+[[maybe_unused]] static bool initializeEglBuffer(const sp<SurfaceControl>& layer, int width,
+                                                 int height, EglBuffer* egl) {
+    egl->window = layer->getSurface();
+    if (egl->window == nullptr) {
+        logStatus("buffer Surface unavailable", 0, -1);
+        return false;
+    }
+    egl->display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (egl->display == EGL_NO_DISPLAY) {
+        logStatus("eglGetDisplay failed", 0, eglGetError());
+        return false;
+    }
+    EGLint major = 0;
+    EGLint minor = 0;
+    if (!eglInitialize(egl->display, &major, &minor)) {
+        logStatus("eglInitialize failed", 0, eglGetError());
+        return false;
+    }
+    egl->initialized = true;
+    if (!eglBindAPI(EGL_OPENGL_ES_API)) {
+        logStatus("eglBindAPI failed", 0, eglGetError());
+        destroyEglBuffer(egl);
+        return false;
+    }
+    const EGLint configAttributes[] = {
+            EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+            EGL_RED_SIZE, 8,
+            EGL_GREEN_SIZE, 8,
+            EGL_BLUE_SIZE, 8,
+            EGL_ALPHA_SIZE, 8,
+            EGL_NONE,
+    };
+    EGLConfig config = nullptr;
+    EGLint configCount = 0;
+    if (!eglChooseConfig(egl->display, configAttributes, &config, 1, &configCount) ||
+        configCount == 0) {
+        logStatus("eglChooseConfig failed", 0, eglGetError());
+        destroyEglBuffer(egl);
+        return false;
+    }
+    const EGLint contextAttributes[] = {EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE};
+    egl->context = eglCreateContext(egl->display, config, EGL_NO_CONTEXT, contextAttributes);
+    if (egl->context == EGL_NO_CONTEXT) {
+        logStatus("eglCreateContext failed", 0, eglGetError());
+        destroyEglBuffer(egl);
+        return false;
+    }
+    egl->surface = eglCreateWindowSurface(egl->display, config, egl->window.get(), nullptr);
+    if (egl->surface == EGL_NO_SURFACE) {
+        logStatus("eglCreateWindowSurface failed", 0, eglGetError());
+        destroyEglBuffer(egl);
+        return false;
+    }
+    if (!eglMakeCurrent(egl->display, egl->surface, egl->surface, egl->context)) {
+        logStatus("eglMakeCurrent failed", 0, eglGetError());
+        destroyEglBuffer(egl);
+        return false;
+    }
+    if (!eglSwapInterval(egl->display, 1)) {
+        logStatus("eglSwapInterval unavailable", 0, eglGetError());
+    }
+    if (!drawEglBuffer(egl, width, height, 0.0f, 1.0f, 0.25f)) {
+        destroyEglBuffer(egl);
+        return false;
+    }
+    return true;
+}
+
+static bool paintGraphicBuffer(const sp<GraphicBuffer>& buffer, uint8_t red, uint8_t green,
+                               uint8_t blue) {
+    if (buffer == nullptr || buffer->initCheck() != NO_ERROR || buffer->handle == nullptr ||
+        buffer->handle->numFds < 1) {
+        logStatus("GraphicBuffer handle unavailable", 0, -1);
+        return false;
+    }
+    const size_t rowBytes = static_cast<size_t>(buffer->getStride()) * 4;
+    const size_t mapSize = rowBytes * buffer->getHeight();
+    const int fd = buffer->handle->data[0];
+    const off_t allocationSize = lseek(fd, 0, SEEK_END);
+    if (allocationSize < 0 || static_cast<uint64_t>(allocationSize) < mapSize) {
+        logStatus("GraphicBuffer dma-buf size query failed", 0,
+                  allocationSize < 0 ? -1 : static_cast<int>(allocationSize));
+        return false;
+    }
+    dma_buf_sync sync{};
+    sync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_WRITE;
+    const bool syncStarted = ioctl(fd, DMA_BUF_IOCTL_SYNC, &sync) == 0;
+    void* mapped = mmap(nullptr, mapSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (mapped == MAP_FAILED) {
+        const int error = errno;
+        if (syncStarted) {
+            sync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_WRITE;
+            ioctl(fd, DMA_BUF_IOCTL_SYNC, &sync);
+        }
+        logStatus("GraphicBuffer dma-buf mmap failed", 0, -error);
+        return false;
+    }
+    auto* pixels = static_cast<uint8_t*>(mapped);
+    for (uint32_t y = 0; y < buffer->getHeight(); ++y) {
+        for (uint32_t x = 0; x < buffer->getWidth(); ++x) {
+            uint8_t* pixel = pixels + static_cast<size_t>(y) * rowBytes + x * 4;
+            pixel[0] = red;
+            pixel[1] = green;
+            pixel[2] = blue;
+            pixel[3] = 255;
+        }
+    }
+    munmap(mapped, mapSize);
+    if (syncStarted) {
+        sync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_WRITE;
+        if (ioctl(fd, DMA_BUF_IOCTL_SYNC, &sync) != 0) {
+            logStatus("GraphicBuffer dma-buf sync-end failed", 0, -errno);
+        }
+    }
+    return true;
+}
+
+static sp<GraphicBuffer> makeGraphicBuffer(int width, int height, uint8_t red, uint8_t green,
+                                           uint8_t blue) {
+    auto buffer = sp<GraphicBuffer>::make(
+            static_cast<uint32_t>(width), static_cast<uint32_t>(height), PIXEL_FORMAT_RGBA_8888,
+            1, static_cast<uint64_t>(GraphicBuffer::USAGE_HW_COMPOSER |
+                                     GraphicBuffer::USAGE_SW_WRITE_OFTEN),
+            "KikiTestUiFrame");
+    if (buffer == nullptr || buffer->initCheck() != NO_ERROR ||
+        !paintGraphicBuffer(buffer, red, green, blue)) {
+        logStatus("GraphicBuffer allocation or fill failed", 0,
+                  buffer == nullptr ? -1 : buffer->initCheck());
+        return nullptr;
+    }
+    return buffer;
 }
 
 struct Glyph {
@@ -143,10 +330,25 @@ int main() {
     const int dotSize = std::max(24, std::min(width, height) / 12);
     const int dotY = std::min(height - dotSize - 24, textY + textHeight + cell * 2);
     auto background = makeColorLayer(client, "KikiTestBackground");
-    auto dot = makeColorLayer(client, "KikiTestMovingPixel");
-    if (background == nullptr || dot == nullptr || !background->isValid() || !dot->isValid()) {
+    auto bufferLayer = client->createSurface(String8("KikiTestGraphicBuffer"), dotSize, dotSize,
+                                             PIXEL_FORMAT_RGBA_8888);
+    if (background == nullptr || !background->isValid() || bufferLayer == nullptr ||
+        !bufferLayer->isValid()) {
         logStatus("layer creation failed", 0, -1);
         return 4;
+    }
+    sp<GraphicBuffer> frameBuffers[2] = {
+            makeGraphicBuffer(dotSize, dotSize, 0, 255, 64),
+            makeGraphicBuffer(dotSize, dotSize, 0, 140, 255),
+    };
+    const bool useGraphicBuffer = frameBuffers[0] != nullptr && frameBuffers[1] != nullptr;
+    sp<SurfaceControl> fallbackDot;
+    if (!useGraphicBuffer) {
+        fallbackDot = makeColorLayer(client, "KikiTestMovingPixelFallback");
+        if (fallbackDot == nullptr || !fallbackDot->isValid()) {
+            logStatus("fallback layer creation failed", 0, -1);
+            return 4;
+        }
     }
     std::vector<Stroke> textStrokes;
     if (!appendTextStrokes(client, testText, cell, textX, textY, &textStrokes)) {
@@ -154,7 +356,11 @@ int main() {
         return 4;
     }
     logHandle("background", background);
-    logHandle("dot", dot);
+    if (useGraphicBuffer) {
+        logHandle("GraphicBuffer", bufferLayer);
+    } else {
+        logHandle("fallback dot", fallbackDot);
+    }
 
     SurfaceComposerClient::Transaction show;
     show.setDisplayLayerStack(display, ui::DEFAULT_LAYER_STACK);
@@ -170,11 +376,18 @@ int main() {
                 .setLayer(stroke.layer, layerIndex++)
                 .show(stroke.layer);
     }
-    show.setCrop(dot, Rect(0, 0, dotSize, dotSize))
-            .setPosition(dot, 24, dotY)
-            .setColor(dot, half3{0.0f, 1.0f, 0.25f})
-            .setLayer(dot, layerIndex)
-            .show(dot);
+    if (useGraphicBuffer) {
+        show.setBuffer(bufferLayer, frameBuffers[0], std::nullopt, uint64_t{1})
+                .setPosition(bufferLayer, 24, dotY)
+                .setLayer(bufferLayer, layerIndex)
+                .show(bufferLayer);
+    } else {
+        show.setCrop(fallbackDot, Rect(0, 0, dotSize, dotSize))
+                .setPosition(fallbackDot, 24, dotY)
+                .setColor(fallbackDot, half3{0.0f, 1.0f, 0.25f})
+                .setLayer(fallbackDot, layerIndex)
+                .show(fallbackDot);
+    }
     result = show.apply(true);
     if (result != NO_ERROR) {
         logStatus("show transaction failed", 0, result);
@@ -182,8 +395,9 @@ int main() {
     }
     fd = open("/dev/kmsg", O_WRONLY | O_CLOEXEC);
     if (fd >= 0) {
-        dprintf(fd, "<6>KIKI-TEST-UI TEST OK display=%dx%d text-strokes=%zu animated=1\n",
-                width, height, textStrokes.size());
+        dprintf(fd, "<6>KIKI-TEST-UI TEST OK display=%dx%d text-strokes=%zu animated=%s\n",
+                width, height, textStrokes.size(),
+                useGraphicBuffer ? "GRAPHIC_BUFFER" : "SOLID_COLOR_FALLBACK");
         close(fd);
     }
 
@@ -192,12 +406,20 @@ int main() {
         const int phase = static_cast<int>(frame % 32);
         const int step = phase < 16 ? phase : 32 - phase;
         const int x = 24 + step * travel / 16;
-        const half3 color = (frame & 1) ? half3{0.0f, 1.0f, 0.25f}
-                                        : half3{0.0f, 0.55f, 1.0f};
-        result = SurfaceComposerClient::Transaction()
-                .setPosition(dot, x, dotY)
-                .setColor(dot, color)
-                .apply(true);
+        if (useGraphicBuffer) {
+            result = SurfaceComposerClient::Transaction()
+                    .setBuffer(bufferLayer, frameBuffers[(frame + 1) & 1], std::nullopt,
+                               static_cast<uint64_t>(frame + 2))
+                    .setPosition(bufferLayer, x, dotY)
+                    .apply(true);
+        } else {
+            const half3 color = (frame & 1) ? half3{0.0f, 1.0f, 0.25f}
+                                            : half3{0.0f, 0.55f, 1.0f};
+            result = SurfaceComposerClient::Transaction()
+                    .setPosition(fallbackDot, x, dotY)
+                    .setColor(fallbackDot, color)
+                    .apply(true);
+        }
         logStatus(result == NO_ERROR ? "frame committed" : "frame failed", frame, result);
         usleep(500000);
     }

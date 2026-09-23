@@ -1,0 +1,120 @@
+--- a/device/generic/goldfish/hals/hwc3/GuestFrameComposer.cpp
++++ b/device/generic/goldfish/hals/hwc3/GuestFrameComposer.cpp
+@@ -47,7 +47,7 @@ class ScopedDmaBufMapping {
+    public:
+     ~ScopedDmaBufMapping() { Finish(); }
+ 
+-    bool Map(int fd, size_t size) {
++    bool Map(int fd, size_t size, bool write = true) {
+         if (fd < 0 || size == 0) {
+             ALOGE("%s: invalid dma-buf fd:%d size:%zu", __FUNCTION__, fd, size);
+             return false;
+@@ -56,8 +56,9 @@ class ScopedDmaBufMapping {
+         mFd = fd;
+         mSize = size;
+ 
++        mSyncFlags = write ? DMA_BUF_SYNC_RW : DMA_BUF_SYNC_READ;
+         struct dma_buf_sync sync = {};
+-        sync.flags = static_cast<decltype(sync.flags)>(DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW);
++        sync.flags = static_cast<decltype(sync.flags)>(DMA_BUF_SYNC_START | mSyncFlags);
+         if (ioctl(mFd, DMA_BUF_IOCTL_SYNC, &sync) == 0) {
+             mSyncStarted = true;
+         } else {
+@@ -65,7 +66,8 @@ class ScopedDmaBufMapping {
+                   strerror(errno));
+         }
+ 
+-        mData = mmap(nullptr, mSize, PROT_READ | PROT_WRITE, MAP_SHARED, mFd, 0);
++        const int protection = PROT_READ | (write ? PROT_WRITE : 0);
++        mData = mmap(nullptr, mSize, protection, MAP_SHARED, mFd, 0);
+         if (mData == MAP_FAILED) {
+             const int error = errno;
+             mData = nullptr;
+@@ -81,7 +83,7 @@ class ScopedDmaBufMapping {
+     void Finish() {
+         if (mSyncStarted) {
+             struct dma_buf_sync sync = {};
+-            sync.flags = static_cast<decltype(sync.flags)>(DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW);
++            sync.flags = static_cast<decltype(sync.flags)>(DMA_BUF_SYNC_END | mSyncFlags);
+             if (ioctl(mFd, DMA_BUF_IOCTL_SYNC, &sync) != 0) {
+                 ALOGW("%s: dma-buf CPU sync end failed: %s", __FUNCTION__, strerror(errno));
+             }
+@@ -93,6 +95,7 @@ class ScopedDmaBufMapping {
+         }
+         mSize = 0;
+         mFd = -1;
++        mSyncFlags = 0;
+     }
+ 
+    private:
+@@ -100,6 +103,7 @@ class ScopedDmaBufMapping {
+     size_t mSize = 0;
+     void* mData = nullptr;
+     bool mSyncStarted = false;
++    uint64_t mSyncFlags = 0;
+ };
+ 
+ // Returns a color matrix that can be used with libyuv by converting values
+@@ -1045,19 +1049,52 @@ HWC3::Error GuestFrameComposer::composeLayerInto(
+         }
+         GrallocBuffer& srcBuffer = *srcBufferOpt;
+ 
++        ScopedDmaBufMapping srcBufferMapping;
++        bool haveSourceSpec = false;
+         srcBufferViewOpt = srcBuffer.Lock();
+-        if (!srcBufferViewOpt) {
+-            ALOGE("%s: failed to lock import layer buffer.", __FUNCTION__);
+-            return HWC3::Error::NoResources;
++        if (srcBufferViewOpt) {
++            GrallocBufferView& srcBufferView = *srcBufferViewOpt;
++            auto srcLayerSpecOpt = GetBufferSpec(srcBuffer, srcBufferView, srcLayerCrop);
++            if (srcLayerSpecOpt) {
++                srcLayerSpec = *srcLayerSpecOpt;
++                haveSourceSpec = true;
++            } else {
++                ALOGE("%s: failed to describe locked layer buffer.", __FUNCTION__);
++                return HWC3::Error::NoResources;
++            }
+         }
+-        GrallocBufferView& srcBufferView = *srcBufferViewOpt;
+-
+-        auto srcLayerSpecOpt = GetBufferSpec(srcBuffer, srcBufferView, srcLayerCrop);
+-        if (!srcLayerSpecOpt) {
+-            return HWC3::Error::NoResources;
++        if (!haveSourceSpec) {
++            const auto* handle = reinterpret_cast<cros_gralloc_handle_t>(srcLayer->waitAndGetBuffer());
++            const auto format = srcBuffer.GetDrmFormat();
++            const auto width = srcBuffer.GetWidth();
++            const auto height = srcBuffer.GetHeight();
++            const auto stride = srcBuffer.GetMonoPlanarStrideBytes();
++            if (handle == nullptr || handle->num_planes != 1 || handle->fds[0] < 0 ||
++                handle->sizes[0] == 0 || !format || !width || !height || !stride ||
++                (*format != DRM_FORMAT_ABGR8888 && *format != DRM_FORMAT_XBGR8888) ||
++                handle->format_modifier != DRM_FORMAT_MOD_LINEAR ||
++                srcLayerCrop.left < 0 || srcLayerCrop.top < 0 ||
++                srcLayerCrop.right <= srcLayerCrop.left ||
++                srcLayerCrop.bottom <= srcLayerCrop.top ||
++                srcLayerCrop.right > static_cast<int32_t>(*width) ||
++                srcLayerCrop.bottom > static_cast<int32_t>(*height) ||
++                !srcBufferMapping.Map(handle->fds[0],
++                                      static_cast<size_t>(handle->offsets[0]) + handle->sizes[0],
++                                      false)) {
++                ALOGE("%s: cannot map unsupported layer buffer via dma-buf", __FUNCTION__);
++                return HWC3::Error::NoResources;
++            }
++            auto* source = srcBufferMapping.Get() + handle->offsets[0];
++            srcLayerSpec = BufferSpec(
++                source, std::nullopt, *width, *height,
++                static_cast<uint32_t>(srcLayerCrop.left),
++                static_cast<uint32_t>(srcLayerCrop.top),
++                static_cast<uint32_t>(srcLayerCrop.right - srcLayerCrop.left),
++                static_cast<uint32_t>(srcLayerCrop.bottom - srcLayerCrop.top),
++                *format, *stride, GetDrmFormatBytesPerPixel(*format));
++            ALOGI("KikiAOSP: mapped DEVICE dma-buf fd=%d size=%u format=%u %ux%u stride=%u",
++                  handle->fds[0], handle->sizes[0], *format, *width, *height, *stride);
+         }
+-
+-        srcLayerSpec = *srcLayerSpecOpt;
+     } else if (srcLayerCompositionType == Composition::SOLID_COLOR) {
+         // srcLayerSpec not used by `needsFill` below.
+     }
