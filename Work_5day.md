@@ -22,3 +22,20 @@ The TCP-only adbd init change (`67afeba`) rebuilt successfully on 185 in 5 Ninja
 The rc4 kernel and rebuilt system image booted to the established stable black-screen baseline. SurfaceFlinger still reaches the known graphics checkpoint. The adbd service starts, but the host sees `127.0.0.1:5555` as `offline`; no `adbd started` line appears after authentication initialization. QEMU was stopped after the test.
 
 Next controlled step: instrument or bypass the adbd authentication initialization path while preserving the TCP-only transport. Do not touch unrelated AOSP projects; every change must enter this repository's patch/overlay set and pass the audit before rebuilding.
+
+## Final ADB checkpoint
+
+The no-auth transport path is now proven on the rc4 image. The guest configures
+`eth0` as `10.0.2.15/24` for QEMU user networking, adbd listens on `tcp:5555`,
+and the host connects successfully:
+
+```text
+127.0.0.1:5555 device product:kikiaosp_test_arm64_phone model:KikiAOSP_ARM64_Phone device:kikiaosp_test
+uid=2000(shell) gid=2000(shell)
+ro.product.device=kikiaosp_test
+ro.product.name=kikiaosp_test_arm64_phone
+```
+
+The stable black-screen boot remains intact. The QEMU process was stopped after
+the regression test. All functional changes are committed in this repository;
+the corresponding kernel remains the rc4 artifact from `kikiaosp_kernel`.
