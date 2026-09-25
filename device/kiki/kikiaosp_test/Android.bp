@@ -23,6 +23,7 @@ cc_prebuilt_library_shared {
     srcs: ["prebuilt/lib64/libicu.so"],
     compile_multilib: "64",
     stem: "libicu",
+    relative_install_path: "bootstrap",
     installable: true,
     check_elf_files: false,
     system_shared_libs: [],
@@ -156,4 +157,14 @@ cc_binary {
         "libutils",
     ],
     compile_multilib: "64",
+}
+
+android_app {
+    name: "KikiWindowTest",
+    manifest: "apps/KikiWindowTest/AndroidManifest.xml",
+    srcs: ["apps/KikiWindowTest/src/**/*.java"],
+    sdk_version: "37",
+    dex_preopt: {
+        enabled: false,
+    },
 }

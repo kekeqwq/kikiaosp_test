@@ -2,7 +2,7 @@
 
 KikiAOSP is a native ARM64 Android 17 test target for Windows ARM hosts. It is a kernel/Android boot and graphics test environment, not a phone product.
 
-## Frozen baseline
+## Verified baseline and active target
 
 - Device: `kikiaosp_test`
 - Product: `kikiaosp_test_arm64_phone`
@@ -12,7 +12,11 @@ KikiAOSP is a native ARM64 Android 17 test target for Windows ARM hosts. It is a
 - Emulator: upstream QEMU `aarch64-softmmu`, machine `virt`, `virtio-gpu-pci`
 - Android graphics: ranchu HWC3/minigbm and SurfaceFlinger client composition
 
-The frozen reference image intentionally has no Launcher, bootanimation, or UI layer. SurfaceFlinger reaches `primary connected=1` and `after flinger init`. The active black frame is established by the tracked `kiki_black_scanout` DRM service; compositor startup alone does not make QEMU's display active.
+The released black-screen image is a historical reference checkpoint, not the active UI product. It intentionally has no Launcher or Android app window. Its SurfaceFlinger/HWC/DRM startup and black scanout were verified separately; that does not prove Android WindowManager or an APK is rendering.
+
+The current device-tree work now composes AOSP's generic core with a deliberately small native UI set (`Launcher3QuickStep`, `Settings`, `SystemUI`, `LatinIME`, and the `KikiWindowTest` APK). The product selects the full Framework startup branch rather than the earlier boot-only/minimal-service mode, and Kiki init no longer stops Android native services. Some Kiki-specific Framework conditionals remain in the tracked AOSP patch set and still require a boot audit. This source configuration has not yet been rebuilt or boot-validated: the Android UI, Close button, two animated APK frames, and a 30-minute run remain unproven acceptance gates.
+
+The minimal Ranchu init hook calls `mount_all /vendor/etc/fstab.ranchu` during `fs` and `late-fs`; keep both files under `vendor/etc` so `/data` and the remaining test partitions are mounted. `/data` is a `latemount` entry because Android mounts it during late-fs after core properties are available.
 
 ## Repository layout
 
@@ -20,12 +24,19 @@ The frozen reference image intentionally has no Launcher, bootanimation, or UI l
 device/kiki/kikiaosp_test/       device/product definition
 patches/aosp-working-tree.patch  tracked AOSP source changes
 patches/aosp-render-output.patch raster client-target bring-up changes
+patches/archive/                    superseded patch drafts, not applied
 overlays/                        required formerly-untracked source files
 scripts/apply-aosp-integration.sh
 scripts/sync-device-tree.sh
 ```
 
 The upstream AOSP checkout is never committed here. Apply this tree and patch set explicitly to a clean checkout.
+
+The active patch set is file-disjoint and each patch is reverse-dry-run checked
+by `scripts/audit-aosp-integration.sh`. The former `aosp-hwc-dmabuf-map.patch`
+was an overlapping intermediate edit to `GuestFrameComposer.cpp`; its final
+combined source state is carried by `aosp-hwc-device-buffer-map.patch`, so the
+intermediate is archived and is not applied.
 
 ## 1. Prepare a Linux build host
 
@@ -70,7 +81,7 @@ cd ~/aosp-master
 repo status
 ```
 
-The script installs `device/kiki/kikiaosp_test`, applies the graphics/runtime patch set, and copies the overlays. To return to pure upstream, use a fresh checkout or restore it from version control; do not commit these changes upstream.
+The script synchronizes `device/kiki/kikiaosp_test` without deleting unknown files in the AOSP destination, applies the graphics/runtime patch set, and copies the overlays. Use a fresh checkout for a reproducible upstream baseline; to return to pure upstream, restore it from version control. Do not commit Kiki changes into upstream AOSP.
 
 After editing files under `device/kiki/kikiaosp_test/` in this repository,
 sync that device tree into the separate AOSP working tree before building:
@@ -195,9 +206,9 @@ Linux TCG uses the same devices, replacing `-accel whpx -cpu host` with `-accel 
 
 ## 9. Proven state and next step
 
-The frozen black baseline previously passed a 1800-second no-panic/no-SIGSEGV/no-core-service-restart run, with ARM64 kernel boot, Android init/Binder/servicemanager/allocator/HWC/SurfaceFlinger startup, DRM connector detection, and ADB. Separately, the native test client now submits two solid-color SurfaceComposer layers (background and moving square) every 500 ms; QEMU monitor captures prove two distinct frames from the actual display output.
+The frozen black baseline previously passed a 1800-second no-panic/no-SIGSEGV/no-core-service-restart run, with ARM64 kernel boot, Android init/Binder/servicemanager/allocator/HWC/SurfaceFlinger startup, DRM connector detection, and ADB. Separately, the native test client submitted two solid-color SurfaceComposer layers (background and moving square); QEMU monitor captures proved two distinct frames from the actual display output. That is display-pipeline evidence, not evidence of an Android Activity window.
 
-This proves the minimal Android layer → SurfaceFlinger → GuestFrameComposer → DRM/KMS → QEMU display path for solid-color layers. It does not yet prove arbitrary app-buffer/client-target composition, a launcher/window manager, input, sustained stability, or high-refresh operation. See [the two-frame rendering checkpoint](#12-native-two-frame-ui-proof-2026-09-23) for the exact image, boot mode, and evidence hashes.
+This proves the minimal Android layer → SurfaceFlinger → GuestFrameComposer → DRM/KMS → QEMU display path for solid-color layers. It does not yet prove arbitrary app-buffer/client-target composition, a launcher/window manager, input, sustained stability, or high-refresh operation. The current acceptance target is the visible animated `KikiWindowTest` Android Activity with a usable Close button and at least two distinct Windows desktop frames. See [the two-frame rendering checkpoint](#12-native-two-frame-ui-proof-2026-09-23) for the earlier native-layer evidence and hashes.
 
 ## 10. Development history
 
@@ -216,6 +227,7 @@ Before any build, run the integration audit from the device repository:
 
 ```bash
 ./scripts/audit-aosp-integration.sh ~/aosp-master
+./scripts/audit-device-tree-profile.sh
 ```
 
 The audit verifies that every AOSP modification is represented by this repository's patch/overlay set and that the selected product is the fixed `userdebug` target. It fails closed if an unrelated AOSP change or an `eng`/other product configuration is present, preventing an accidental configuration switch and installclean.

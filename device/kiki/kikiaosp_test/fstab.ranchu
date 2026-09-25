@@ -2,5 +2,5 @@
 /dev/block/vdb /vendor erofs ro wait,first_stage_mount
 /dev/block/vdc /product erofs ro wait,nofail,first_stage_mount
 /dev/block/vdd /system_ext erofs ro wait,nofail,first_stage_mount
-/dev/block/vde /data f2fs noatime,nosuid,nodev wait,check,formattable,first_stage_mount
+/dev/block/vde /data f2fs noatime,nosuid,nodev wait,check,formattable,latemount
 /dev/block/vdf /misc emmc defaults wait

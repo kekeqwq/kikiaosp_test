@@ -1,92 +1,14 @@
-# KikiAOSP minimal native profile. Keep the display/core graph only.
-# This is intentionally one bulk policy; services can be re-enabled later.
+# Compatibility name retained for the image repacker. This file now supplies
+# only the standard Android process environment; native services are owned by
+# upstream init/APEX rules and must not be stopped by Kiki policy.
 on early-init
-    stop linkerconfig
-    stop audioserver
-    stop cameraserver
-    stop drm
-    stop mediaextractor
-    stop mediametrics
-    stop mediaswcodec
-    stop media
-    stop netd
-    stop netd1shot
-    stop mdnsd
-    stop storaged
-    stop usbd
-    stop gpuservice
-    stop gpu
-    stop vendor.boot-default
-    stop vendor.audio-hal
-    stop vendor.audio-hal-aidl
-    stop vendor.audio-effect-hal-aidl
-    stop vendor.audio-hal-4-0-msd
-    stop audio_proxy_service
-    stop vendor.camera-provider-2-4
-    stop vendor.camera-provider-2-5
-    stop android.hardware.sensors-service.multihal
-    stop android.hardware.sensors-service.example
-    stop android.hardware.health-service
-    stop android.hardware.biometrics.face-service
-    stop android.hardware.biometrics.fingerprint-service
-    stop android.hardware.bluetooth-service
-    stop android.hardware.bluetooth@1.1-service
-    stop android.hardware.ir-service.example
-    stop android.hardware.power-service
-    stop android.hardware.power.stats-service
-    stop android.hardware.thermal-service
-    stop vendor.thermal-engine
-    stop thermal-engine
-
-on property:sys.boot_completed=1
-    stop bootanim
-
-
-# class_start/updatable can launch these after early-init; stop them at the
-# first running transition so failed hardware cannot create restart storms.
-on property:init.svc.audioserver=running
-    stop audioserver
-on property:init.svc.netd=running
-    stop netd
-on property:init.svc.netd1shot=running
-    stop netd1shot
-on property:init.svc.vendor.boot-default=running
-    stop vendor.boot-default
-on property:init.svc.cameraserver=running
-    stop cameraserver
-on property:init.svc.gpuservice=running
-    stop gpuservice
-on property:init.svc.gpu=running
-    stop gpu
-on property:init.svc.android.hardware.sensors-service.multihal=running
-    stop android.hardware.sensors-service.multihal
-on property:init.svc.vendor.thermal-engine=running
-    stop vendor.thermal-engine
-on property:init.svc.thermal-engine=running
-    stop thermal-engine
-
-on property:init.svc.vendor.sensors-hal-multihal=running
-    stop vendor.sensors-hal-multihal
-
-on property:init.svc.vendor.keymint-rust=running
-    stop vendor.keymint-rust
-on property:init.svc.vendor.keymint=running
-    stop vendor.keymint
-
-on boot
-    stop vendor.keymint-rust
-    stop vendor.keymint
-
-on late-init
-    stop vendor.keymint-rust
-    stop vendor.keymint
-
-on boot
-    stop netd
-    stop netd1shot
-    stop audioserver
-
-on late-init
-    stop netd
-    stop netd1shot
-    stop audioserver
+    export ANDROID_BOOTLOGO 1
+    export ANDROID_ROOT /system
+    export ANDROID_ASSETS /system/app
+    export ANDROID_DATA /data
+    export ANDROID_STORAGE /storage
+    export ANDROID_ART_ROOT /apex/com.android.art
+    export ANDROID_I18N_ROOT /apex/com.android.i18n
+    export ANDROID_TZDATA_ROOT /apex/com.android.tzdata
+    export EXTERNAL_STORAGE /sdcard
+    export ASEC_MOUNTPOINT /mnt/asec

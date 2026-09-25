@@ -7,14 +7,6 @@
             <instance>default</instance>
         </interface>
     </hal>
-    <hal format="aidl">
-        <name>android.hardware.graphics.allocator</name>
-        <version>3</version>
-        <interface>
-            <name>IAllocator</name>
-            <instance>default</instance>
-        </interface>
-    </hal>
     <hal format="native">
         <name>mapper</name>
         <version>5.0</version>

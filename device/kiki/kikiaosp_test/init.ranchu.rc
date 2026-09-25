@@ -1,0 +1,7 @@
+# Minimal Ranchu partition mounting. Hardware-specific service startup is
+# intentionally handled by the existing Kiki graphics and ADB init files.
+on fs
+    mount_all /vendor/etc/fstab.ranchu --early
+
+on late-fs
+    mount_all /vendor/etc/fstab.ranchu --late
