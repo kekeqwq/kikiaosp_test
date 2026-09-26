@@ -669,3 +669,11 @@ serial and stderr logs remain in `aosp/windows-arm64-test/` on host 106.
 - Windows 实机完整验证 864×1728 → 2784×1876 → 864×1728，以及任意横向 2374×1530。每次都在分辨率稳定后截取 2880×1920 整张 Windows 桌面并检查 Android 四边、顶部状态信息、底部搜索栏和三键导航；画面完整且触摸可交互。SurfaceFlinger 始终为 PID 312，Launcher3 始终为 PID 1019，tombstone 数量前后均为 42。
 - 本分支 system 镜像 SHA-256 `002e67758ff9cec0cc7c31161ba3cf12be3fad7a8fdfd0e6e4c559dcc830c85e`；最终 vendor 镜像 SHA-256 `674652a3e965c36b20fd50eff2e3bd7c7a2ae1553cc8a76be3d1ed0925efb396`；配套内核 SHA-256 `e7ede20ab411b628f59f5345a7fa5da1155cd2a0a40dad45247f9498cacca06b`。AOSP integration audit 通过：176 个 tracked patch 路径、5 个 overlay 路径。
 - 这次里程碑只声明软件显示路径的真实像素动态尺寸与触摸可用；高刷、宿主 GPU 加速及真实音频仍属于后续工作。整桌证据含私人桌面背景，只留 Windows 本机 `~/Downloads/temp/`，不上传仓库。测试后 QEMU 与 4447/5555 监听均已关闭。
+
+### W5-NETWORK-AUDIO-FEATURE-20260926
+
+- 按用户要求，在 KikiEmu、kikiaosp_test、kikiaosp_kernel 三仓库分别从已验证主线开出 `feature/network-audio-20260926`，不改写主线历史。Android 仅使用 QEMU `virtio-net-pci` 虚拟 Ethernet；Windows Surface 当前没有实体有线网卡，用户确认允许 QEMU 通过宿主现有路由出站，客体不接入 Wi-Fi 或移动数据设备。
+- AOSP Android 17 源码核对：`ConnectivityServiceInitializer` 只有在系统声明 `android.hardware.ethernet`（或 USB host）时才创建 EthernetService。已有 `eth0=10.0.2.15/24` 与 ADB 的策略路由只支持 ADB，不能让 APK 取得 Android 默认网络。因此在 Kiki 设备树加入 vendor 级 `KikiConnectivityOverlay`，按 AOSP `config_ethernet_interfaces` 格式设置 `eth0` 的 Internet/不计费/不受限/可信能力、`10.0.2.2` 网关和 `10.0.2.3` DNS，并安装 Ethernet feature XML。原早期 ADB 地址和路由仍保留。
+- 音频保持已注册的 AOSP AIDL core/effect HAL 和 Kiki Speaker policy；内核 flake 增加内建 `CONFIG_SND_VIRTIO=y`，Windows QEMU 启动脚本在显式 `-SpeakerOutput` 时增加 `-audiodev dsound,id=kiki_audio` 与单路播放 `virtio-sound-pci`，同时关闭原 `ignore_output` 软件静音模式。保留不带该开关时的原稳定静音启动路径。
+- 用户要求 Android 媒体音量默认 100%。Android 17 `AudioService` 实际读取 `ro.config.media_vol_default`，故产品设最大和默认均为 15；早期 Kiki 启动脚本还在系统服务就绪后调用 `cmd media_session volume --stream 3 --set 15`，覆盖冻结 userdata 中可能保存的旧音量。Windows/QEMU 音量由宿主控制。
+- 两项设备树/AOSP 集成审计已通过。185 的 `tmux` 会话 `kiki-build` 正按内核、Android vendor 的顺序构建；需追加 systemimage 构建以包含音量属性与启动脚本。此时只记录实施和构建进度，尚无客机 APK 联网或 Windows 扬声器播放的实测结论。

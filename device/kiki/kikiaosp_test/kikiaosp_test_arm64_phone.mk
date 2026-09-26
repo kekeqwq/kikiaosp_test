@@ -120,11 +120,28 @@ PRODUCT_PACKAGES += \
 # AudioFlinger. Keep Android audio enabled and provide AOSP's default AIDL
 # core/effect HAL services through their vendor APEX.
 PRODUCT_PACKAGES += \
-    com.android.hardware.audio
+    com.android.hardware.audio \
+    android.hardware.audio.output.prebuilt.xml
+# The Android media stream starts at its maximum index. Host-side speaker
+# volume remains under Windows control during emulator sessions.
+PRODUCT_SYSTEM_PROPERTIES += \
+    ro.config.media_vol_steps=15 \
+    ro.config.media_vol_default=15
+PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
+    vendor/etc/permissions/android.hardware.audio.output.prebuilt.xml
 
-# Keep the AIDL audio services alive for Framework startup. For the UI
-# bring-up, the output stream can use the AOSP example HAL's software stub;
-# the same policy can later route to virtio-sound without changing Framework.
+# Register QEMU's virtio NIC as Android's unrestricted Ethernet default
+# network. The static address matches QEMU user-mode NAT and the early ADB
+# bootstrap; ConnectivityService owns the app-visible route and DNS.
+PRODUCT_PACKAGES += \
+    KikiConnectivityOverlay \
+    android.hardware.ethernet.prebuilt.xml
+PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
+    vendor/etc/permissions/android.hardware.ethernet.prebuilt.xml \
+    vendor/overlay/KikiConnectivityOverlay.apk
+
+# The AOSP AIDL primary HAL sends the Speaker PCM stream to ALSA card 0,
+# device 0. The host runner provides that card with virtio-sound.
 PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     vendor/etc/audio_policy_configuration.xml \
     vendor/etc/audio_policy_volumes.xml \

@@ -87,3 +87,9 @@ scripts/audit-aosp-integration.sh ~/aosp-master
 ## 开发约束
 
 在 `feature/<name>` 分支做改动，跑完审计与对应构建/Windows 实测后再快进合并 `main`。构建相关改动归本仓库或内核仓库；QEMU 和 Windows 打包/启动相关改动归 KikiEmu 主仓库。每个稳定里程碑记下 AOSP manifest、内核版本、镜像哈希、实际 QEMU 参数、ADB/画面结论与未解决问题；历史详见 `Work_5day.md`。
+
+## Ethernet 与扬声器功能分支
+
+`feature/network-audio-20260926` 为 QEMU 的 `virtio-net-pci` 增加 Kiki 专属 Connectivity 资源覆盖层：`eth0` 使用静态地址 `10.0.2.15/24`、网关 `10.0.2.2`、DNS `10.0.2.3`，并声明 `android.hardware.ethernet`，供 Android EthernetService 注册应用可见的默认网络。原有的早期地址和策略路由仍用于 TCP ADB；客体没有 Wi-Fi 或移动数据设备。
+
+音频沿用 AOSP AIDL primary HAL 与本设备的 Speaker 策略，面向 ALSA card 0/device 0。设备树将 Android 媒体流默认音量设为 15/15，启动脚本也会处理旧 userdata 内保存的较低音量。实际播放还需要匹配的 `CONFIG_SND_VIRTIO` 内核和 Windows QEMU 的 DirectSound 后端。镜像构建通过后仍需在 Windows 客机验证 APK 联网及真实扬声器输出。
