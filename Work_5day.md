@@ -662,3 +662,10 @@ serial and stderr logs remain in `aosp/windows-arm64-test/` on host 106.
 - 主仓库的 `tools/collect_kikiaosp_assets.ps1` 已实际从 185 拉取四类输入并逐一比对 profile 中的 SHA-256，解包六个辅助文件后得到 `bundles/launcher3-settings-20260926/`。直接使用这个新目录的默认启动脚本再次冷启动 QEMU/WHPX：ADB 返回 `sys.boot_completed=1`、`ro.product.device=kikiaosp_test`、默认 HOME 为 `com.android.launcher3/.uioverrides.QuickstepLauncher`；解锁后 Settings 的多任务卡真实显示。全桌面本地证据为 `C:\Users\keke\Downloads\temp\qemu-desktop-collected-bundle-overview-20260926.png`，不上传。测试 QEMU 已停止。
 - QEMU 补丁迁到主仓库后，另在固定上游 `5f664cd` 的临时干净工作树按顺序应用两个补丁，均通过 `git apply --check`；换行符标准化后 `meson.build` 与 `ui/gtk.c` 与当前已运行的本机构建源码逐字一致。临时工作树已移除；没有重新全量构建 QEMU，已运行的二进制仍是该源码状态产生的 ARM64 PE。
 - 设备树仓库职责修订提交 `af5c93e489a273de2b235b05a57f77e0a1c9576e`：只保留 AOSP 补丁和 Android 构建说明，QEMU 补丁从设备树 Git 删除；两项设备/AOSP 审计仍通过。主仓库现在拥有 QEMU 两补丁、构建脚本、运行镜像清单、收集与启动脚本。
+
+### W5-NATIVE-RESOLUTION-HWC-VERIFIED-20260926
+- 在 `feature/native-resolution-20260926` 上完成 Android 侧动态显示链路。Ranchu HWC 在读取 connector 模式前取得 DRM master，模式变化时清空旧 plane、更新 CRTC，并通过现有 `Display::updateParameters()` 原位更新显示参数；不再向 SurfaceFlinger 发送假的断开事件，也不再销毁/重建 Android display、layer、资源和 vsync 状态。
+- Linux 配套分支等待 VirtIO GPU 的 EDID 和 display-info 两类异步响应都完成后才发送 DRM hotplug。QEMU Windows ARM 配套补丁将 GTK 客户区物理像素通过 UIInfo 交给客体，并在 Windows 200% DPI 下用 GTK scale factor 的倒数绘制完整 guest surface，修复此前只看到左上角的问题。
+- Windows 实机完整验证 864×1728 → 2784×1876 → 864×1728，以及任意横向 2374×1530。每次都在分辨率稳定后截取 2880×1920 整张 Windows 桌面并检查 Android 四边、顶部状态信息、底部搜索栏和三键导航；画面完整且触摸可交互。SurfaceFlinger 始终为 PID 312，Launcher3 始终为 PID 1019，tombstone 数量前后均为 42。
+- 本分支 system 镜像 SHA-256 `002e67758ff9cec0cc7c31161ba3cf12be3fad7a8fdfd0e6e4c559dcc830c85e`；最终 vendor 镜像 SHA-256 `674652a3e965c36b20fd50eff2e3bd7c7a2ae1553cc8a76be3d1ed0925efb396`；配套内核 SHA-256 `e7ede20ab411b628f59f5345a7fa5da1155cd2a0a40dad45247f9498cacca06b`。AOSP integration audit 通过：176 个 tracked patch 路径、5 个 overlay 路径。
+- 这次里程碑只声明软件显示路径的真实像素动态尺寸与触摸可用；高刷、宿主 GPU 加速及真实音频仍属于后续工作。整桌证据含私人桌面背景，只留 Windows 本机 `~/Downloads/temp/`，不上传仓库。测试后 QEMU 与 4447/5555 监听均已关闭。
