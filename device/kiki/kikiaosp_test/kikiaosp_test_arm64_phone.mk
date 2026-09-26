@@ -128,6 +128,10 @@ PRODUCT_PACKAGES += \
 PRODUCT_SYSTEM_PROPERTIES += \
     ro.config.media_vol_steps=15 \
     ro.config.media_vol_default=15
+# Register the real software Codec2 store. The default hidl selection
+# publishes an empty service, so Vorbis UI sounds and ringtone preview
+# cannot allocate a decoder.
+PRODUCT_SYSTEM_PROPERTIES += media.c2.hal.selection=aidl
 PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     vendor/etc/permissions/android.hardware.audio.output.prebuilt.xml
 
