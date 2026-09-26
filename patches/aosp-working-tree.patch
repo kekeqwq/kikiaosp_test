@@ -849,7 +849,7 @@ index 96fd85f8..3e1d7fc1 100644
 \ No newline at end of file
 +}  // namespace aidl::android::hardware::graphics::composer3::impl
 diff --git a/device/generic/goldfish/hals/hwc3/ComposerClient.cpp b/device/generic/goldfish/hals/hwc3/ComposerClient.cpp
-index 0a68cb18..ce038789 100644
+index 0a68cb18..99de666c 100644
 --- a/device/generic/goldfish/hals/hwc3/ComposerClient.cpp
 +++ b/device/generic/goldfish/hals/hwc3/ComposerClient.cpp
 @@ -16,6 +16,8 @@
@@ -880,6 +880,30 @@ index 0a68cb18..ce038789 100644
      DEBUG_LOG("%s", __FUNCTION__);
  
      const bool isFirstRegisterCallback = mCallbacks == nullptr;
+@@ -1411,7 +1418,22 @@ HWC3::Error ComposerClient::handleHotplug(bool connected, uint32_t id, uint32_t
+                           static_cast<int>(dpiX), static_cast<int>(dpiY), vsyncPeriodNanos)};
+         {
+             std::lock_guard<std::mutex> lock(mDisplaysMutex);
+-            createDisplayLocked(displayId, configId, configs);
++            const auto existing = mDisplays.find(displayId);
++            if (existing != mDisplays.end()) {
++                // Preserve layers, resources, client targets, and the vsync
++                // thread while updating the active physical configuration.
++                const HWC3::Error updateError = existing->second->updateParameters(
++                        width, height, dpiX, dpiY, refreshRateHz);
++                if (updateError != HWC3::Error::None) {
++                    return updateError;
++                }
++            } else {
++                const HWC3::Error createError =
++                        createDisplayLocked(displayId, configId, configs);
++                if (createError != HWC3::Error::None) {
++                    return createError;
++                }
++            }
+         }
+ 
+         ALOGI("Hotplug connecting display:%" PRIu32 " w:%" PRIu32 " h:%" PRIu32 " dpiX:%" PRIu32
 diff --git a/device/generic/goldfish/hals/hwc3/ComposerResources.cpp b/device/generic/goldfish/hals/hwc3/ComposerResources.cpp
 index 8083b45d..c47f9059 100644
 --- a/device/generic/goldfish/hals/hwc3/ComposerResources.cpp
@@ -1109,7 +1133,7 @@ index 08b7a46a..4c7aa31d 100644
  
  HWC3::Error Display::setActiveConfig(int32_t configId) {
 diff --git a/device/generic/goldfish/hals/hwc3/DrmClient.cpp b/device/generic/goldfish/hals/hwc3/DrmClient.cpp
-index a55e94bd..196b6359 100644
+index a55e94bd..70419f56 100644
 --- a/device/generic/goldfish/hals/hwc3/DrmClient.cpp
 +++ b/device/generic/goldfish/hals/hwc3/DrmClient.cpp
 @@ -16,6 +16,12 @@
@@ -1166,15 +1190,10 @@ index a55e94bd..196b6359 100644
          if (success) {
              DEBUG_LOG("%s: Successfully initialized DRM backend", __FUNCTION__);
          } else {
-@@ -99,17 +114,33 @@ HWC3::Error DrmClient::init() {
+@@ -99,17 +114,36 @@ HWC3::Error DrmClient::init() {
          }
      }
  
--    mDrmEventListener = DrmEventListener::create(mFd, [this]() { handleHotplug(); });
--    if (!mDrmEventListener) {
--        ALOGE("%s: Failed to initialize DRM event listener", __FUNCTION__);
--    } else {
--        DEBUG_LOG("%s: Successfully initialized DRM event listener", __FUNCTION__);
 +    // Release the DRM master between commits so the software allocator can
 +    // open the primary node and create dumb GEM buffers on 2D virtio-gpu.
 +    drmDropMaster(mFd.get());
@@ -1182,17 +1201,23 @@ index a55e94bd..196b6359 100644
 +        const std::string msg = "WINQ-DRM after-init-drop is=" +
 +                std::to_string(drmIsMaster(mFd.get())) + "\\n";
 +        write(fd, msg.c_str(), msg.size()); close(fd);
-     }
- 
++    }
++
 +    // The minimal image starts the allocator only after HWC has completed
 +    // its first DRM-master transaction. This avoids allocator/HWC startup
 +    // races on the single virtio-gpu primary node.
 +    ::android::base::SetProperty("sys.kiki.hwc.ready", "1");
 +
-+    // The probe is forked after init; keep DRM event handling synchronous so
-+    // the child never inherits a live listener thread.
-+    mDrmEventListener.reset();
-+
++    // A resized virtio-gpu scanout generates a DRM hotplug uevent. Keep the
++    // connector listener alive so HWC and SurfaceFlinger can adopt its mode.
+     mDrmEventListener = DrmEventListener::create(mFd, [this]() { handleHotplug(); });
+     if (!mDrmEventListener) {
+-        ALOGE("%s: Failed to initialize DRM event listener", __FUNCTION__);
+-    } else {
+-        DEBUG_LOG("%s: Successfully initialized DRM event listener", __FUNCTION__);
++        ALOGW("%s: DRM hotplug listener unavailable; initial mode remains usable", __FUNCTION__);
+     }
+ 
      DEBUG_LOG("%s: Successfully initialized.", __FUNCTION__);
      return HWC3::Error::None;
  }
@@ -1205,7 +1230,7 @@ index a55e94bd..196b6359 100644
  HWC3::Error DrmClient::getDisplayConfigs(std::vector<DisplayConfig>* configs) const {
      DEBUG_LOG("%s", __FUNCTION__);
  
-@@ -153,6 +184,12 @@ bool DrmClient::loadDrmDisplays() {
+@@ -153,6 +187,12 @@ bool DrmClient::loadDrmDisplays() {
      std::vector<std::unique_ptr<DrmPlane>> planes;
  
      drmModePlaneResPtr drmPlaneResources = drmModeGetPlaneResources(mFd.get());
@@ -1218,7 +1243,7 @@ index a55e94bd..196b6359 100644
      for (uint32_t i = 0; i < drmPlaneResources->count_planes; ++i) {
          const uint32_t planeId = drmPlaneResources->planes[i];
  
-@@ -167,6 +204,15 @@ bool DrmClient::loadDrmDisplays() {
+@@ -167,6 +207,15 @@ bool DrmClient::loadDrmDisplays() {
      drmModeFreePlaneResources(drmPlaneResources);
  
      drmModeRes* drmResources = drmModeGetResources(mFd.get());
@@ -1234,7 +1259,7 @@ index a55e94bd..196b6359 100644
      for (uint32_t crtcIndex = 0; crtcIndex < drmResources->count_crtcs; crtcIndex++) {
          const uint32_t crtcId = drmResources->crtcs[crtcIndex];
  
-@@ -196,6 +242,7 @@ bool DrmClient::loadDrmDisplays() {
+@@ -196,6 +245,7 @@ bool DrmClient::loadDrmDisplays() {
      if (crtcs.size() != connectors.size()) {
          ALOGE("%s: Failed assumption mCrtcs.size():%zu equals mConnectors.size():%zu", __FUNCTION__,
                crtcs.size(), connectors.size());
@@ -1242,7 +1267,7 @@ index a55e94bd..196b6359 100644
          return false;
      }
  
-@@ -212,6 +259,7 @@ bool DrmClient::loadDrmDisplays() {
+@@ -212,6 +262,7 @@ bool DrmClient::loadDrmDisplays() {
              });
          if (planeIt == planes.end()) {
              ALOGE("%s: Failed to find plane for display:%" PRIu32, __FUNCTION__, i);
@@ -1250,7 +1275,7 @@ index a55e94bd..196b6359 100644
              return false;
          }
  
-@@ -238,8 +286,12 @@ std::tuple<HWC3::Error, std::shared_ptr<DrmBuffer>> DrmClient::create(
+@@ -238,8 +289,12 @@ std::tuple<HWC3::Error, std::shared_ptr<DrmBuffer>> DrmClient::create(
      }
  
      DrmPrimeBufferHandle primeHandle = 0;
@@ -1263,7 +1288,7 @@ index a55e94bd..196b6359 100644
          ALOGE("%s: drmPrimeFDToHandle failed: %s (errno %d)", __FUNCTION__, strerror(errno), errno);
          return std::make_tuple(HWC3::Error::NoResources, nullptr);
      }
-@@ -257,7 +309,32 @@ std::tuple<HWC3::Error, std::shared_ptr<DrmBuffer>> DrmClient::create(
+@@ -257,7 +312,32 @@ std::tuple<HWC3::Error, std::shared_ptr<DrmBuffer>> DrmClient::create(
      ret = drmModeAddFB2(mFd.get(), buffer->mWidth, buffer->mHeight, buffer->mDrmFormat,
                          buffer->mPlaneHandles, buffer->mPlanePitches, buffer->mPlaneOffsets,
                          &framebuffer, 0);
@@ -1296,7 +1321,17 @@ index a55e94bd..196b6359 100644
          ALOGE("%s: drmModeAddFB2 failed: %s (errno %d)", __FUNCTION__, strerror(errno), errno);
          return std::make_tuple(HWC3::Error::NoResources, nullptr);
      }
-@@ -352,7 +429,10 @@ std::tuple<HWC3::Error, ::android::base::unique_fd> DrmClient::flushToDisplay(
+@@ -321,7 +401,8 @@ bool DrmClient::handleHotplug() {
+                 .dpiX = display->getDpiX(),
+                 .dpiY = display->getDpiY(),
+                 .rr = display->getRefreshRateUint(),
+-                .connected = change == DrmHotplugChange::kConnected,
++                .connected = change == DrmHotplugChange::kConnected ||
++                             change == DrmHotplugChange::kModeChanged,
+             });
+         }
+     }
+@@ -352,7 +433,10 @@ std::tuple<HWC3::Error, ::android::base::unique_fd> DrmClient::flushToDisplay(
      }
  
      AutoReadLock lock(mDisplaysMutex);
@@ -1321,21 +1356,18 @@ index 3c8fd41b..d66f6d4a 100644
      struct DisplayConfig {
          uint32_t id;
 diff --git a/device/generic/goldfish/hals/hwc3/DrmConnector.cpp b/device/generic/goldfish/hals/hwc3/DrmConnector.cpp
-index a7b67299..96ac8c08 100644
+index a7b67299..0800a77c 100644
 --- a/device/generic/goldfish/hals/hwc3/DrmConnector.cpp
 +++ b/device/generic/goldfish/hals/hwc3/DrmConnector.cpp
-@@ -55,6 +55,10 @@ bool DrmConnector::update(::android::base::borrowed_fd drmFd) {
+@@ -55,7 +55,6 @@ bool DrmConnector::update(::android::base::borrowed_fd drmFd) {
      }
  
      mStatus = drmConnector->connection;
-+    ALOGE("WINQ-DRM-CONNECTOR id=%" PRIu32 " status=%d modes=%d encoders=%d encoder=%" PRIu32,
-+          mId, static_cast<int>(mStatus), drmConnector->count_modes,
-+          drmConnector->count_encoders, drmConnector->encoder_id);
-+    { FILE* k = fopen("/dev/kmsg", "w"); if (k) { fprintf(k, "WINQ-DRM-CONNECTOR id=%u status=%d modes=%d encoders=%d encoder=%u\n", mId, static_cast<int>(mStatus), drmConnector->count_modes, drmConnector->count_encoders, drmConnector->encoder_id); fclose(k); } }
- 
+-
      mModes.clear();
      for (uint32_t i = 0; i < drmConnector->count_modes; i++) {
-@@ -67,6 +71,18 @@ bool DrmConnector::update(::android::base::borrowed_fd drmFd) {
+         auto mode = DrmMode::create(drmFd, drmConnector->modes[i]);
+@@ -67,6 +66,18 @@ bool DrmConnector::update(::android::base::borrowed_fd drmFd) {
          mModes.push_back(std::move(mode));
      }
  
@@ -1355,7 +1387,7 @@ index a7b67299..96ac8c08 100644
      if (mStatus == DRM_MODE_CONNECTED) {
          std::optional<EdidInfo> maybeEdidInfo = loadEdid(drmFd);
 diff --git a/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp b/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp
-index ed1fa68c..ab84e484 100644
+index ed1fa68c..bd495313 100644
 --- a/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp
 +++ b/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp
 @@ -18,6 +18,10 @@
@@ -1369,7 +1401,22 @@ index ed1fa68c..ab84e484 100644
  namespace aidl::android::hardware::graphics::composer3::impl {
  namespace {
  
-@@ -103,6 +107,32 @@ std::tuple<HWC3::Error, ::android::base::unique_fd> DrmDisplay::flush(
+@@ -64,8 +68,13 @@ std::unique_ptr<DrmDisplay> DrmDisplay::create(uint32_t id, std::unique_ptr<DrmC
+         }
+     }
+ 
+-    return std::unique_ptr<DrmDisplay>(
++    auto display = std::unique_ptr<DrmDisplay>(
+         new DrmDisplay(id, std::move(connector), std::move(crtc), std::move(plane)));
++    if (display->isConnected()) {
++        display->mActiveWidth = display->getWidth();
++        display->mActiveHeight = display->getHeight();
++    }
++    return display;
+ }
+ 
+ std::tuple<HWC3::Error, ::android::base::unique_fd> DrmDisplay::flush(
+@@ -103,6 +112,32 @@ std::tuple<HWC3::Error, ::android::base::unique_fd> DrmDisplay::flush(
          return std::make_tuple(HWC3::Error::NoResources, ::android::base::unique_fd());
      }
  
@@ -1402,6 +1449,261 @@ index ed1fa68c..ab84e484 100644
      mPreviousBuffer = buffer;
  
      DEBUG_LOG("%s: submitted atomic update, flush fence:%d\n", __FUNCTION__, flushFenceFd);
+@@ -160,33 +195,106 @@ DrmHotplugChange DrmDisplay::checkAndHandleHotplug(::android::base::borrowed_fd
+     DEBUG_LOG("%s: display:%" PRIu32, __FUNCTION__, mId);
+ 
+     const bool oldConnected = mConnector->isConnected();
+-    mConnector->update(drmFd);
++    const uint32_t oldWidth = oldConnected ? mActiveWidth : 0;
++    const uint32_t oldHeight = oldConnected ? mActiveHeight : 0;
++
++    // DRM_MODE_GETCONNECTOR only performs fill_modes for the current DRM
++    // master. Acquire master before refreshing the connector; otherwise the
++    // kernel returns its stale cached fallback modes after a virtio-gpu EDID
++    // change and Android incorrectly adopts 800x600.
++    const bool needMaster = !drmIsMaster(drmFd.get());
++    if (needMaster && drmSetMaster(drmFd.get()) != 0) {
++        ALOGE("%s: display:%" PRIu32 " cannot acquire DRM master: errno=%d", __FUNCTION__,
++              mId, errno);
++        return DrmHotplugChange::kNoChange;
++    }
++
++    if (!mConnector->update(drmFd)) {
++        ALOGE("%s: display:%" PRIu32 " failed to refresh connector", __FUNCTION__, mId);
++        if (needMaster) {
++            drmDropMaster(drmFd.get());
++        }
++        return DrmHotplugChange::kNoChange;
++    }
+     const bool newConnected = mConnector->isConnected();
+ 
+-    // Likely a modification from the host:
+     if (oldConnected && newConnected) {
+-        if (!onDisconnect(drmFd)) {
+-            ALOGE("%s: display:%" PRIu32 " failed to disconnect.", __FUNCTION__, mId);
++        if (oldWidth == mConnector->getWidth() && oldHeight == mConnector->getHeight()) {
++            if (needMaster) {
++                drmDropMaster(drmFd.get());
++            }
++            return DrmHotplugChange::kNoChange;
+         }
+-        if (!onConnect(drmFd)) {
+-            ALOGE("%s: display:%" PRIu32 " failed to connect.", __FUNCTION__, mId);
++        ALOGI("%s: display:%" PRIu32 " mode changed %ux%u -> %ux%u", __FUNCTION__, mId,
++              oldWidth, oldHeight, mConnector->getWidth(), mConnector->getHeight());
++    }
++
++    const bool modeChanged = oldConnected && newConnected &&
++                             (oldWidth != mConnector->getWidth() ||
++                              oldHeight != mConnector->getHeight());
++    if (oldConnected == newConnected && !modeChanged) {
++        if (needMaster) {
++            drmDropMaster(drmFd.get());
+         }
+         return DrmHotplugChange::kNoChange;
+     }
+ 
+-    if (newConnected) {
+-        ALOGI("%s: display:%" PRIu32 " was connected.", __FUNCTION__, mId);
+-        if (!onConnect(drmFd)) {
+-            ALOGE("%s: display:%" PRIu32 " failed to connect.", __FUNCTION__, mId);
++    bool okay;
++    DrmHotplugChange change;
++    if (modeChanged) {
++        // Clear the old framebuffer plane before changing the CRTC mode. This
++        // is an internal DRM transition only; userspace still receives one
++        // connected/reconfigured callback and never a primary-display
++        // disconnect notification.
++        okay = onDisconnect(drmFd);
++        if (!okay) {
++            ALOGE("%s: display:%" PRIu32 " failed to clear old plane: errno=%d",
++                  __FUNCTION__, mId, errno);
+         }
+-        return DrmHotplugChange::kConnected;
++        const bool connected = okay && onConnect(drmFd);
++        if (!connected) {
++            ALOGE("%s: display:%" PRIu32 " failed to set changed mode: errno=%d", __FUNCTION__,
++                  mId, errno);
++        }
++        okay = okay && connected;
++        if (okay) {
++            mActiveWidth = mConnector->getWidth();
++            mActiveHeight = mConnector->getHeight();
++        }
++        change = DrmHotplugChange::kModeChanged;
++    } else if (newConnected) {
++        ALOGI("%s: display:%" PRIu32 " was connected.", __FUNCTION__, mId);
++        okay = onConnect(drmFd);
++        if (!okay) {
++            ALOGE("%s: display:%" PRIu32 " failed to connect: errno=%d", __FUNCTION__, mId,
++                  errno);
++        }
++        if (okay) {
++            mActiveWidth = mConnector->getWidth();
++            mActiveHeight = mConnector->getHeight();
++        }
++        change = DrmHotplugChange::kConnected;
+     } else {
+         ALOGI("%s: display:%" PRIu32 " was disconnected.", __FUNCTION__, mId);
+-        if (!onDisconnect(drmFd)) {
+-            ALOGE("%s: display:%" PRIu32 " failed to disconnect.", __FUNCTION__, mId);
++        okay = onDisconnect(drmFd);
++        if (!okay) {
++            ALOGE("%s: display:%" PRIu32 " failed to disconnect: errno=%d", __FUNCTION__, mId,
++                  errno);
+         }
+-        return DrmHotplugChange::kDisconnected;
++        if (okay) {
++            mActiveWidth = 0;
++            mActiveHeight = 0;
++        }
++        change = DrmHotplugChange::kDisconnected;
+     }
++
++    if (needMaster) {
++        drmDropMaster(drmFd.get());
++    }
++    if (!okay) {
++        return DrmHotplugChange::kNoChange;
++    }
++    return change;
+ }
+ 
+ }  // namespace aidl::android::hardware::graphics::composer3::impl
+diff --git a/device/generic/goldfish/hals/hwc3/DrmDisplay.h b/device/generic/goldfish/hals/hwc3/DrmDisplay.h
+index 0a349c7b..908aefeb 100644
+--- a/device/generic/goldfish/hals/hwc3/DrmDisplay.h
++++ b/device/generic/goldfish/hals/hwc3/DrmDisplay.h
+@@ -38,6 +38,7 @@ enum class DrmHotplugChange {
+     kNoChange,
+     kConnected,
+     kDisconnected,
++    kModeChanged,
+ };
+ 
+ class DrmDisplay {
+@@ -83,6 +84,8 @@ class DrmDisplay {
+     std::unique_ptr<DrmConnector> mConnector;
+     std::unique_ptr<DrmCrtc> mCrtc;
+     std::unique_ptr<DrmPlane> mPlane;
++    uint32_t mActiveWidth = 0;
++    uint32_t mActiveHeight = 0;
+ 
+     // The last presented buffer / DRM framebuffer is cached until
+     // the next present to avoid toggling the display on and off.
+diff --git a/device/generic/goldfish/hals/hwc3/DrmEventListener.cpp b/device/generic/goldfish/hals/hwc3/DrmEventListener.cpp
+index e56f50c3..7b2beefb 100644
+--- a/device/generic/goldfish/hals/hwc3/DrmEventListener.cpp
++++ b/device/generic/goldfish/hals/hwc3/DrmEventListener.cpp
+@@ -17,6 +17,7 @@
+ #include "DrmEventListener.h"
+ 
+ #include <linux/netlink.h>
++#include <poll.h>
+ #include <sys/socket.h>
+ 
+ namespace aidl::android::hardware::graphics::composer3::impl {
+@@ -32,7 +33,15 @@ std::unique_ptr<DrmEventListener> DrmEventListener::create(::android::base::borr
+     return listener;
+ }
+ 
++DrmEventListener::~DrmEventListener() {
++    mStop.store(true);
++    if (mThread.joinable()) {
++        mThread.join();
++    }
++}
++
+ bool DrmEventListener::init(::android::base::borrowed_fd drmFd) {
++    (void)drmFd;
+     mEventFd = ::android::base::unique_fd(socket(PF_NETLINK, SOCK_DGRAM, NETLINK_KOBJECT_UEVENT));
+     if (!mEventFd.ok()) {
+         ALOGE("Failed to open uevent socket: %s", strerror(errno));
+@@ -50,34 +59,34 @@ bool DrmEventListener::init(::android::base::borrowed_fd drmFd) {
+         return false;
+     }
+ 
+-    FD_ZERO(&mMonitoredFds);
+-    FD_SET(drmFd.get(), &mMonitoredFds);
+-    FD_SET(mEventFd.get(), &mMonitoredFds);
+-    mMaxMonitoredFd = std::max(drmFd.get(), mEventFd.get());
+-
+     mThread = std::thread([this]() { threadLoop(); });
+ 
+     return true;
+ }
+ 
+ void DrmEventListener::threadLoop() {
+-    int ret;
+-    do {
+-        ret = select(mMaxMonitoredFd + 1, &mMonitoredFds, NULL, NULL, NULL);
+-    } while (ret == -1 && errno == EINTR);
+-
+-    if (!FD_ISSET(mEventFd.get(), &mMonitoredFds)) {
+-        ALOGE("%s: DrmEventListevener event fd unset?", __FUNCTION__);
+-        return;
+-    }
+-
+     char buffer[1024];
+-    while (true) {
++    while (!mStop.load()) {
++        struct pollfd eventFd = {.fd = mEventFd.get(), .events = POLLIN, .revents = 0};
++        int ready = poll(&eventFd, 1, 500);
++        if (ready == 0) {
++            // Virtio-gpu mode changes are not reported consistently on every
++            // host stack; poll the connector while the window remains open.
++            mOnEventCallback();
++            continue;
++        }
++        if (ready < 0 && errno == EINTR) {
++            continue;
++        }
++        if (ready < 0 || !(eventFd.revents & POLLIN)) {
++            ALOGE("%s: DRM hotplug poll failed: %s", __FUNCTION__, strerror(errno));
++            return;
++        }
+         ssize_t ret = read(mEventFd.get(), &buffer, sizeof(buffer));
+         if (ret == 0) {
+             return;
+         } else if (ret < 0) {
+-            ALOGE("Got error reading uevent %zd", ret);
++            ALOGE("Got error reading uevent: %s", strerror(errno));
+             return;
+         }
+         // Replace all but the last `\0` to potentially not affect string
+diff --git a/device/generic/goldfish/hals/hwc3/DrmEventListener.h b/device/generic/goldfish/hals/hwc3/DrmEventListener.h
+index 4ab29b61..0588bf92 100644
+--- a/device/generic/goldfish/hals/hwc3/DrmEventListener.h
++++ b/device/generic/goldfish/hals/hwc3/DrmEventListener.h
+@@ -22,6 +22,7 @@
+ #include <xf86drmMode.h>
+ 
+ #include <cstdint>
++#include <atomic>
+ #include <functional>
+ #include <optional>
+ #include <thread>
+@@ -36,7 +37,7 @@ class DrmEventListener {
+     static std::unique_ptr<DrmEventListener> create(::android::base::borrowed_fd drmFd,
+                                                     std::function<void()> callback);
+ 
+-    ~DrmEventListener() {}
++    ~DrmEventListener();
+ 
+    private:
+     DrmEventListener(std::function<void()> callback) : mOnEventCallback(std::move(callback)) {}
+@@ -46,10 +47,9 @@ class DrmEventListener {
+     void threadLoop();
+ 
+     std::thread mThread;
++    std::atomic<bool> mStop{false};
+     std::function<void()> mOnEventCallback;
+     ::android::base::unique_fd mEventFd;
+-    fd_set mMonitoredFds;
+-    int mMaxMonitoredFd = 0;
+ };
+ 
+ }  // namespace aidl::android::hardware::graphics::composer3::impl
 diff --git a/device/generic/goldfish/hals/hwc3/GuestFrameComposer.cpp b/device/generic/goldfish/hals/hwc3/GuestFrameComposer.cpp
 index 6bfe0765..19905ded 100644
 --- a/device/generic/goldfish/hals/hwc3/GuestFrameComposer.cpp
