@@ -1,3 +1,5 @@
+// KikiAOSP device modules. Device resource overlays, including the
+// Bluetooth-free Settings sound screen, live under overlay/.
 cc_prebuilt_library_shared {
     name: "kiki-libnativeloader-bootstrap",
     srcs: ["prebuilt/lib64/libnativeloader.so"],

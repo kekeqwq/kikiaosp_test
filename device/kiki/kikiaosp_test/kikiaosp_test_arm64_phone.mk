@@ -84,6 +84,7 @@ PRODUCT_PACKAGES += \
     SystemUI \
     LatinIME \
     FusedLocation \
+    SoundPicker \
     preinstalled-packages-platform-handheld-product.xml \
     preinstalled-packages-platform-handheld-system.xml \
     preinstalled-packages-handheld-system-ext.xml
@@ -298,3 +299,7 @@ PRODUCT_PACKAGES += \
 PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     system/lib/android.hardware.graphics.composer@2.1.so
 DEVICE_MANIFEST_FILE += device/kiki/kikiaosp_test/kiki_hwc3.xml
+
+# Settings ringtone/notification/alarm rows launch SoundPicker. Package 14 is
+# the current AOSP material set and is much smaller than AllAudio.mk.
+$(call inherit-product-if-exists, frameworks/base/data/sounds/AudioPackage14.mk)

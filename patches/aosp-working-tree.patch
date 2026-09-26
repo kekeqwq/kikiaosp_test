@@ -573,7 +573,7 @@ index 2bcc764b55..3f273b4053 100644
  
 +# KikiAOSP final package policy (after all product inheritance).
 +ifneq (,$(filter kikiaosp_test_arm64_phone,$(TARGET_PRODUCT)))
-+KIKI_NONCORE_PACKAGES := CrossDeviceSync AccountAndSyncSettings Contacts ContactsProvider Calendar CalendarProvider Dialer TeleService TelecomShim TelephonyProvider MmsService CellBroadcastLegacyApp CarrierConfig CFSatelliteService ONS QualifiedNetworksService ImsServiceEntitlement GbaService SimAppDialog Stk CallLogBackup BlockedNumberProvider EmergencyInfo BackupRestoreConfirmation SharedStorageBackup LocalTransport ManagedProvisioning PrivateSpace DynamicSystemInstallationService DeviceAsWebcam Camera2 Gallery2 Music DeskClock Browser2 messaging CompanionDeviceManager SecureElement CaptivePortalLogin BasicDreams PhotoTable EasterEgg LiveWallpapersPicker WallpaperCropper WallpaperBackup BuiltInPrintService PrintSpooler PrintRecommendationService MusicFX SoundPicker BluetoothMidiService ThreadNetworkDemoApp VirtualDeviceManager WebViewUpdateService android.hardware.sensors-service.multihal com.android.hardware.graphics.composer.drm_hwcomposer
++KIKI_NONCORE_PACKAGES := CrossDeviceSync AccountAndSyncSettings Contacts ContactsProvider Calendar CalendarProvider Dialer TeleService TelecomShim TelephonyProvider MmsService CellBroadcastLegacyApp CarrierConfig CFSatelliteService ONS QualifiedNetworksService ImsServiceEntitlement GbaService SimAppDialog Stk CallLogBackup BlockedNumberProvider EmergencyInfo BackupRestoreConfirmation SharedStorageBackup LocalTransport ManagedProvisioning PrivateSpace DynamicSystemInstallationService DeviceAsWebcam Camera2 Gallery2 Music DeskClock Browser2 messaging CompanionDeviceManager SecureElement CaptivePortalLogin BasicDreams PhotoTable EasterEgg LiveWallpapersPicker WallpaperCropper WallpaperBackup BuiltInPrintService PrintSpooler PrintRecommendationService MusicFX BluetoothMidiService ThreadNetworkDemoApp VirtualDeviceManager WebViewUpdateService android.hardware.sensors-service.multihal com.android.hardware.graphics.composer.drm_hwcomposer
 +PRODUCT_PACKAGES := $(filter-out $(KIKI_NONCORE_PACKAGES),$(PRODUCT_PACKAGES))
 +PRODUCT_PACKAGES_DEBUG := $(filter-out $(KIKI_NONCORE_PACKAGES),$(PRODUCT_PACKAGES_DEBUG))
 +PRODUCT_PACKAGES_ENG := $(filter-out $(KIKI_NONCORE_PACKAGES),$(PRODUCT_PACKAGES_ENG))
@@ -3475,12 +3475,11 @@ index 1c6371e732e5..62321f5d57a3 100644
          // TODO(b/142019040#comment13): Decide whether to load the default instance eagerly, i.e.
          // MimeMap.setDefault(DefaultMimeMapFactory.create());
          /*
-@@ -227,20 +234,25 @@ public class RuntimeInit {
+@@ -227,20 +234,24 @@ public class RuntimeInit {
           * contains many more entries that are derived from IANA registrations but
           * with several customizations (extensions, overrides).
           */
--        MimeMap.setDefaultSupplier(DefaultMimeMapFactory::create);
-+        // Kiki bring-up: defer MimeMap default supplier.
+         MimeMap.setDefaultSupplier(DefaultMimeMapFactory::create);
      }
  
      @UnsupportedAppUsage
