@@ -1,6 +1,6 @@
 # KikiAOSP Test
 
-`kikiaosp_test` 是面向 Windows ARM 上 QEMU/WHPX 的原生 AArch64 Android 17 测试设备，不是 Cuttlefish 手机产品。产品目标为 `kikiaosp_test_arm64_phone`，系统身份为 `KikiAOSP`。此仓库保存设备树、相对 AOSP 上游的源码补丁、精确 manifest 快照与构建审计；[kikiaosp_kernel](https://github.com/kekeqwq/kikiaosp_kernel) 保存 4 KiB 主线内核，[KikiEmu](https://github.com/kekeqwq/KikiEmu) 保存 Windows 启动与截图脚本。
+`kikiaosp_test` 是面向 Windows ARM 上 QEMU/WHPX 的原生 AArch64 Android 17 测试设备，不是 Cuttlefish 手机产品。产品目标为 `kikiaosp_test_arm64_phone`，系统身份为 `KikiAOSP`。此仓库只负责 AOSP 设备树、源码补丁、精确 manifest、构建审计及 Android 镜像产出；[kikiaosp_kernel](https://github.com/kekeqwq/kikiaosp_kernel) 只负责内核；[KikiEmu](https://github.com/kekeqwq/KikiEmu) 负责 QEMU 补丁/构建、取得产物、校验、打包和 Windows 启动。
 
 ## 2026-09-26 验证状态
 
@@ -17,7 +17,6 @@ device/kiki/kikiaosp_test/         本设备及产品定义
 patches/aosp-working-tree.patch   此快照下全部 AOSP tracked 源码改动；唯一应用入口
 overlays/                         AOSP 上游树中新增的少量文件
 manifests/                        已验证的 AOSP 精确项目修订
-patches/qemu-*.patch              Windows ARM QEMU 的下游适配
 scripts/                          同步、应用、审计和历史回归工具
 Work_5day.md                      开发过程与实测日志
 ```
@@ -70,30 +69,21 @@ scripts/refresh-aosp-working-tree-patch.sh ~/aosp-master
 scripts/audit-aosp-integration.sh ~/aosp-master
 ```
 
-内核独立构建：
+## Android 镜像产出与交接
 
-```bash
-cd ~/projects/kikiaosp_kernel
-nix build
-ls -lh result/boot/kernel result/boot/config
-```
+本次已测试的 Android 产物位于开发机 `~/aosp-master/out/target/product/kikiaosp_test/`：
 
-应核对内核配置、4 KiB 页大小和目标镜像的 SHA-256 后再替换已验证产物；本次 Windows 基线使用 `kernel-linux-7.3-rc4-4k-netfilter-20260925`。
+| 文件 | 大小 | SHA-256 |
+| --- | ---: | --- |
+| `system.img` | 1,041,625,088 字节 | `002e67758ff9cec0cc7c31161ba3cf12be3fad7a8fdfd0e6e4c559dcc830c85e` |
+| `vendor.img` | 94,035,968 字节 | `be0725a5d239c35280e3c067d22ed0edf59d2774ab966b31d96e16cb97b591be` |
 
-## Windows ARM QEMU 与启动
+当前 `vendor.img` 已配合上述系统镜像、已测试 rc4 内核与运行辅助磁盘在 Windows ARM 上重新启动；ADB、Launcher3、Settings 和多任务窗口均可用。不要把更早的 `vendor-kikiaosp-ui-scanout-pixel-count-20260926.img` 与当前产物混称为同一镜像。
 
-在 Windows ARM 的 MSYS2 **CLANGARM64** 环境中构建原生 ARM64 QEMU，不要使用 x86_64 UCRT64 目标。将上游 QEMU 固定在 `5f664cd37aec17e8145aa117d8da68f507edc8f1`，依次应用 `patches/qemu-windows-gtk-full-redraw.patch` 和 `patches/qemu-windows-arm64-gtk-touch.patch`；前者修复 GTK 部分重绘，后者是当前触摸坐标及 Windows ARM 构建适配。按照上游 QEMU 的 Windows/MSYS2 依赖说明安装 GTK3、编译工具和相关库，至少构建 `aarch64-softmmu` 并启用 GTK/WHPX；产物 PE Machine 应为 `0xAA64`。当前实测 QEMU 源码处于首个补丁形成的提交 `bde658e` 加第二个补丁的工作树状态，构建出的本机程序为 ARM64 PE。
+本次运行还依赖一个冻结的辅助包：`output/kikiaosp-runtime-support-20260926.tar.zst`，SHA-256 `a8073fe77fc1e8a4e52f24af776955d6d9eae4ef5bd848d9dc703d8d4f1c363b`。它从已验证 Windows 运行资产归档，含启动 ramdisk、空 product/system_ext/odm、F2FS userdata 和 misc；不是本次 `m systemimage vendorimage` 自动生成，也不纳入 Git。开发机 185 已保存该归档；换构建机时须另行迁移相同归档，不能假装从当前源码可直接重建出相同哈希。
 
-将编译好的 `qemu-system-aarch64.exe` 放在 Windows 启动仓库 `tools/qemu-src/build/`，把内核、ramdisk、system/vendor/data/misc/空分区镜像放在 `aosp/windows-arm64-test/`。文件名及启动参数以该仓库 [README](https://github.com/kekeqwq/KikiEmu) 和 `tools/run_kikiaosp_touch_local.ps1` 为准：
-
-```powershell
-.\tools\run_kikiaosp_touch_local.ps1
-adb connect 127.0.0.1:5555
-adb shell getprop sys.boot_completed
-```
-
-脚本使用 `-snapshot`，本次运行不会写回基础磁盘。测试结束要关闭 QEMU 窗口。截图只留在本机 `~/Downloads/temp/`，不要把整张桌面证据意外上传 GitHub。
+本仓库只交付 Android 镜像与必要的构建信息，不再存放 QEMU 补丁或 Windows 启动脚本。主仓库 [KikiEmu README](https://github.com/kekeqwq/KikiEmu) 中的清单及收集脚本会经 SSH 取回 Android 产物、内核和辅助包，验证 SHA-256 后形成可启动目录。测试结束关闭 QEMU；桌面截图只留本机，不上传此仓库。
 
 ## 开发约束
 
-在 `feature/<name>` 分支做改动，跑完审计与对应构建/Windows 实测后再快进合并 `main`。只在设备树仓库和内核仓库开发各自内容；KikiEmu 仓库是本机启动入口。每个稳定里程碑记下 AOSP manifest、内核版本、镜像哈希、实际 QEMU 参数、ADB/画面结论与未解决问题；历史详见 `Work_5day.md`。
+在 `feature/<name>` 分支做改动，跑完审计与对应构建/Windows 实测后再快进合并 `main`。构建相关改动归本仓库或内核仓库；QEMU 和 Windows 打包/启动相关改动归 KikiEmu 主仓库。每个稳定里程碑记下 AOSP manifest、内核版本、镜像哈希、实际 QEMU 参数、ADB/画面结论与未解决问题；历史详见 `Work_5day.md`。

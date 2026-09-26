@@ -1,0 +1,3 @@
+# Built images and frozen runtime support are transferred through the Windows
+# orchestration repository, not committed into the Android device tree.
+/output/
