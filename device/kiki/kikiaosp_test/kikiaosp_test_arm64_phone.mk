@@ -300,6 +300,19 @@ PRODUCT_PACKAGES += \
     android.hardware.graphics.allocator-service.minigbm \
     mapper.minigbm \
     vulkan.pastel
+
+# Android 17's SDV prebuilts contain an ARM64 Mesa EGL/GLES implementation
+# with the Gallium VirGL driver and its virtio_gpu_dri.so symlink. Keep this in
+# the Kiki product so androidboot.hardwareegl=mesa can use QEMU's 3D virtio-gpu
+# without modifying AOSP's generic products or the existing HWC/minigbm path.
+PRODUCT_SOONG_NAMESPACES += device/google/sdv/prebuilts
+PRODUCT_PACKAGES += libGLES_mesa
+# All three upstream SDV Mesa prebuilts have 4 KiB ELF LOAD alignment. This
+# GPU experiment uses our verified 4 KiB kernel; keep the 16 KiB linker target
+# for other modules and waive the prebuilt check only for this Kiki product.
+# A future 16 KiB kernel test needs rebuilt Mesa libraries before this waiver
+# can be removed; this image must not be advertised as 16 KiB compatible.
+PRODUCT_CHECK_PREBUILT_MAX_PAGE_SIZE := false
 PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     system/lib/android.hardware.graphics.composer@2.1.so
 DEVICE_MANIFEST_FILE += device/kiki/kikiaosp_test/kiki_hwc3.xml
