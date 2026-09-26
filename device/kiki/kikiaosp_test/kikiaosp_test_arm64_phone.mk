@@ -53,7 +53,11 @@ PRODUCT_PRODUCT_PROPERTIES += \
 # device facts or narrowly retained platform workarounds, not a minimal server
 # profile. In particular, no init rule below may stop netd, audio, graphics,
 # storage, KeyMint, or other Android native services.
+# Experimental fixed-resolution GPU test: one extra SurfaceFlinger output
+# buffer may reduce client-composition backpressure; retain only if A/B proves
+# a repeatable gain at the 864x1728 minimum mode.
 PRODUCT_SYSTEM_PROPERTIES += \
+    ro.surface_flinger.max_frame_buffer_acquired_buffers=3 \
     ro.kikiaosp.bootstrap_only=false \
     ro.kikiaosp.minimal_services=false \
     ro.kikiaosp.single_mount_namespace=true \
