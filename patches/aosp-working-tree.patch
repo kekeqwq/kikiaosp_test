@@ -564,7 +564,7 @@ index 39cad66a44..62eddc9280 100644
  		--value "$(foreach lib,$(PRODUCT_EXTRA_STUB_LIBRARIES), $(lib).so)"
  	rm -f $@.step1
 diff --git a/build/make/core/product_config.mk b/build/make/core/product_config.mk
-index 2bcc764b55..3f273b4053 100644
+index 2bcc764b55..e96fceed79 100644
 --- a/build/make/core/product_config.mk
 +++ b/build/make/core/product_config.mk
 @@ -276,6 +276,14 @@ ifneq ($(ALLOW_RULES_IN_PRODUCT_CONFIG),)
@@ -3448,7 +3448,7 @@ index 7452d5176ad5..413e3e542d50 100644
  
      /**
 diff --git a/frameworks/base/core/java/com/android/internal/os/RuntimeInit.java b/frameworks/base/core/java/com/android/internal/os/RuntimeInit.java
-index 1c6371e732e5..62321f5d57a3 100644
+index 1c6371e732e5..395fa4522e6f 100644
 --- a/frameworks/base/core/java/com/android/internal/os/RuntimeInit.java
 +++ b/frameworks/base/core/java/com/android/internal/os/RuntimeInit.java
 @@ -148,7 +148,14 @@ public class RuntimeInit {
@@ -3475,12 +3475,7 @@ index 1c6371e732e5..62321f5d57a3 100644
          // TODO(b/142019040#comment13): Decide whether to load the default instance eagerly, i.e.
          // MimeMap.setDefault(DefaultMimeMapFactory.create());
          /*
-@@ -227,20 +234,24 @@ public class RuntimeInit {
-          * contains many more entries that are derived from IANA registrations but
-          * with several customizations (extensions, overrides).
-          */
-         MimeMap.setDefaultSupplier(DefaultMimeMapFactory::create);
-     }
+@@ -232,15 +239,20 @@ public class RuntimeInit {
  
      @UnsupportedAppUsage
      protected static final void commonInit() {
@@ -7370,10 +7365,10 @@ index 1d4d35fb54..778448878b 100644
      ExtensionSet extensionSet(mExtensions.c_str());
      if (extensionSet.hasExtension("GL_EXT_protected_textures")) {
 diff --git a/frameworks/native/libs/renderengine/skia/SkiaGLRenderEngine.cpp b/frameworks/native/libs/renderengine/skia/SkiaGLRenderEngine.cpp
-index 49a64e95fd..c4335a427d 100644
+index 49a64e95fd..c7fc60e8f9 100644
 --- a/frameworks/native/libs/renderengine/skia/SkiaGLRenderEngine.cpp
 +++ b/frameworks/native/libs/renderengine/skia/SkiaGLRenderEngine.cpp
-@@ -19,6 +19,8 @@
+@@ -19,8 +19,11 @@
  
  #include "SkiaGLRenderEngine.h"
  
@@ -7381,13 +7376,28 @@ index 49a64e95fd..c4335a427d 100644
 +#include <cstdint>
  #include <EGL/egl.h>
  #include <EGL/eglext.h>
++#include <android-base/properties.h>
  #include <android-base/stringprintf.h>
-@@ -59,11 +61,34 @@ static bool checkGlError(const char* op, int lineNumber) {
+ #include <common/trace.h>
+ #include <include/gpu/ganesh/GrContextOptions.h>
+@@ -46,6 +49,11 @@ namespace skia {
+ 
+ using base::StringAppendF;
+ 
++static bool kikiUseNativeVirgl() {
++    static const bool enabled = base::GetProperty("ro.hardware.egl", "") == "mesa";
++    return enabled;
++}
++
+ static bool checkGlError(const char* op, int lineNumber) {
+     bool errorFound = false;
+     GLint error = glGetError();
+@@ -59,11 +67,34 @@ static bool checkGlError(const char* op, int lineNumber) {
  
  static status_t selectConfigForAttribute(EGLDisplay dpy, EGLint const* attrs, EGLint attribute,
                                           EGLint wanted, EGLConfig* outConfig) {
 +    // WINQ MVP: gfxstream synthetic display exposes config handle 1.
-+    volatile bool forceWinqConfig = true;
++    const bool forceWinqConfig = !kikiUseNativeVirgl();
 +    if (forceWinqConfig) {
 +        *outConfig = reinterpret_cast<EGLConfig>(static_cast<uintptr_t>(1));
 +        fprintf(stderr, "WINQ-SKIA forced config handle 1\n");
@@ -7396,7 +7406,7 @@ index 49a64e95fd..c4335a427d 100644
      EGLint numConfigs = -1, n = 0;
      eglGetConfigs(dpy, nullptr, 0, &numConfigs);
      std::vector<EGLConfig> configs(numConfigs, EGL_NO_CONFIG_KHR);
-+    if (numConfigs > 0) {
++    if (!kikiUseNativeVirgl() && numConfigs > 0) {
 +        // WINQ MVP: use the advertised config directly; host filtering is unavailable.
 +        eglGetConfigs(dpy, configs.data(), configs.size(), &n);
 +        if (n > 0) {
@@ -7406,7 +7416,7 @@ index 49a64e95fd..c4335a427d 100644
 +        }
 +    }
      eglChooseConfig(dpy, attrs, configs.data(), configs.size(), &n);
-+    if (n == 0 && numConfigs > 0) {
++    if (!kikiUseNativeVirgl() && n == 0 && numConfigs > 0) {
 +        EGLint available = 0;
 +        eglGetConfigs(dpy, configs.data(), configs.size(), &available);
 +        n = available;
@@ -7417,7 +7427,7 @@ index 49a64e95fd..c4335a427d 100644
  
      if (!configs.empty()) {
          if (attribute != EGL_NONE) {
-@@ -235,7 +260,7 @@ EGLConfig SkiaGLRenderEngine::chooseEglConfig(EGLDisplay display, int format, bo
+@@ -235,7 +266,7 @@ EGLConfig SkiaGLRenderEngine::chooseEglConfig(EGLDisplay display, int format, bo
              err = selectEGLConfig(display, format, 0, &config);
              if (err != NO_ERROR) {
                  // this EGL is too lame for android
@@ -7426,26 +7436,29 @@ index 49a64e95fd..c4335a427d 100644
                                   " (format: %d, vendor: %s, version: %s, extensions: %s, Client"
                                   " API: %s)",
                                   format, eglQueryString(display, EGL_VENDOR),
-@@ -444,10 +469,16 @@ EGLContext SkiaGLRenderEngine::createEglContext(EGLDisplay display, EGLConfig co
+@@ -444,10 +475,19 @@ EGLContext SkiaGLRenderEngine::createEglContext(EGLDisplay display, EGLConfig co
                                                  std::optional<ContextPriority> contextPriority,
                                                  Protection protection) {
      EGLint renderableType = 0;
 -    if (config == EGL_NO_CONFIG_KHR) {
 +    // WINQ MVP: request the most conservative GLES2 context for synthetic configs.
-+    volatile bool forceGles2 = true;
++    const bool forceGles2 = !kikiUseNativeVirgl();
 +    if (forceGles2) {
 +        renderableType = EGL_OPENGL_ES2_BIT;
 +    } else if (config == EGL_NO_CONFIG_KHR) {
          renderableType = EGL_OPENGL_ES3_BIT;
      } else if (!eglGetConfigAttrib(display, config, EGL_RENDERABLE_TYPE, &renderableType)) {
 -        LOG_ALWAYS_FATAL("can't query EGLConfig RENDERABLE_TYPE");
++        if (kikiUseNativeVirgl()) {
++            LOG_ALWAYS_FATAL("VirGL EGLConfig has no RENDERABLE_TYPE");
++        }
 +        // WINQ MVP: synthetic gfxstream configs may omit this optional query.
 +        renderableType = EGL_OPENGL_ES2_BIT | EGL_OPENGL_ES3_BIT;
 +        ALOGW("WINQ-SKIA using default renderable type mask");
      }
      EGLint contextClientVersion = 0;
      if (renderableType & EGL_OPENGL_ES3_BIT) {
-@@ -489,6 +520,12 @@ EGLContext SkiaGLRenderEngine::createEglContext(EGLDisplay display, EGLConfig co
+@@ -489,6 +529,12 @@ EGLContext SkiaGLRenderEngine::createEglContext(EGLDisplay display, EGLConfig co
      contextAttributes.push_back(EGL_NONE);
  
      EGLContext context = eglCreateContext(display, config, shareContext, contextAttributes.data());
@@ -7459,22 +7472,43 @@ index 49a64e95fd..c4335a427d 100644
      if (contextClientVersion == 3 && context == EGL_NO_CONTEXT) {
          // eglGetConfigAttrib indicated we can create GLES 3 context, but we failed, thus
 diff --git a/frameworks/native/libs/renderengine/skia/SkiaRenderEngine.cpp b/frameworks/native/libs/renderengine/skia/SkiaRenderEngine.cpp
-index c4b5c1f629..a55998d065 100644
+index c4b5c1f629..8a94953c97 100644
 --- a/frameworks/native/libs/renderengine/skia/SkiaRenderEngine.cpp
 +++ b/frameworks/native/libs/renderengine/skia/SkiaRenderEngine.cpp
-@@ -1635,6 +1635,10 @@ void SkiaRenderEngine::drawLayersInternal(
+@@ -51,6 +51,7 @@
+ #include <SkString.h>
+ #include <SkSurface.h>
+ #include <SkTileMode.h>
++#include <android-base/properties.h>
+ #include <android-base/stringprintf.h>
+ #include <android/ipcrenderbuffer/RenderBufferHelpers.h>
+ #include <common/FlagManager.h>
+@@ -113,6 +114,10 @@ namespace renderengine {
+ namespace skia {
+ 
+ namespace {
++bool kikiUseNativeVirgl() {
++    static const bool enabled = base::GetProperty("ro.hardware.egl", "") == "mesa";
++    return enabled;
++}
+ 
+ static inline SkRect getSkRect(const android::FloatRect& rect) {
+     return SkRect::MakeLTRB(rect.left, rect.top, rect.right, rect.bottom);
+@@ -1635,6 +1640,12 @@ void SkiaRenderEngine::drawLayersInternal(
  
      auto drawFence = sp<Fence>::make(flushAndSubmit(context, dstSurface));
      trace(drawFence);
-+    // Unlock the CPU-raster target before reporting completion to HWC.
-+    activeSurface.reset();
-+    dstSurface.reset();
-+    surfaceTextureRef.reset();
++    if (!kikiUseNativeVirgl()) {
++        // The software baseline must unlock its CPU-raster target before HWC.
++        activeSurface.reset();
++        dstSurface.reset();
++        surfaceTextureRef.reset();
++    }
      FenceTimePtr fenceTime = FenceTime::makeValid(drawFence);
      for (const auto& layer : layers) {
          if (FlagManager::getInstance().monitor_buffer_fences()) {
 diff --git a/frameworks/native/libs/renderengine/skia/compat/GaneshBackendTexture.cpp b/frameworks/native/libs/renderengine/skia/compat/GaneshBackendTexture.cpp
-index 2927437524..c29ce34e2e 100644
+index 2927437524..97f9892357 100644
 --- a/frameworks/native/libs/renderengine/skia/compat/GaneshBackendTexture.cpp
 +++ b/frameworks/native/libs/renderengine/skia/compat/GaneshBackendTexture.cpp
 @@ -19,11 +19,13 @@
@@ -7491,8 +7525,11 @@ index 2927437524..c29ce34e2e 100644
  #include <include/gpu/ganesh/vk/GrVkBackendSurface.h>
  #include <include/gpu/ganesh/vk/GrVkTypes.h>
  
-@@ -33,15 +35,36 @@
+@@ -31,17 +33,44 @@
+ #include "skia/compat/SkiaBackendTexture.h"
+ 
  #include <android/hardware_buffer.h>
++#include <android-base/properties.h>
  #include <common/trace.h>
  #include <log/log_main.h>
 +#include <GLES2/gl2.h>
@@ -7502,6 +7539,11 @@ index 2927437524..c29ce34e2e 100644
  namespace android::renderengine::skia {
  
 +namespace {
++bool kikiUseNativeVirgl() {
++    static const bool enabled = android::base::GetProperty("ro.hardware.egl", "") == "mesa";
++    return enabled;
++}
++
 +void winqNoopDelete(GrAHardwareBufferUtils::TexImageCtx) {}
 +void winqNoopUpdate(GrAHardwareBufferUtils::TexImageCtx, GrDirectContext*) {}
 +
@@ -7529,12 +7571,12 @@ index 2927437524..c29ce34e2e 100644
      AHardwareBuffer_Desc desc;
      AHardwareBuffer_describe(buffer, &desc);
  
-@@ -74,11 +97,50 @@ GaneshBackendTexture::GaneshBackendTexture(sk_sp<GrDirectContext> grContext,
+@@ -74,11 +103,56 @@ GaneshBackendTexture::GaneshBackendTexture(sk_sp<GrDirectContext> grContext,
          LOG_ALWAYS_FATAL("Unexpected graphics API %u", static_cast<unsigned>(graphicsApi));
      }
  
 +    // Render client targets into the same AHardwareBuffer that HWC scans out.
-+    if (isOutputBuffer) {
++    if (isOutputBuffer && !kikiUseNativeVirgl()) {
 +        mWinqFallback = true;
 +        ALOGI("KikiAOSP: shared CPU raster target %ux%u format=%u usage=%llu", desc.width,
 +              desc.height, desc.format, static_cast<unsigned long long>(desc.usage));
@@ -7545,8 +7587,8 @@ index 2927437524..c29ce34e2e 100644
 +    // cannot import as an EGLImage yet. Keep the render thread alive with a
 +    // regular GL texture so SurfaceFlinger can complete its first frame; the
 +    // normal import path remains preferred whenever it succeeds.
-+    if (!mBackendTexture.isValid() && graphicsApi == GrBackendApi::kOpenGL && desc.width &&
-+        desc.height) {
++    if (!kikiUseNativeVirgl() && !mBackendTexture.isValid() &&
++        graphicsApi == GrBackendApi::kOpenGL && desc.width && desc.height) {
 +        GLuint texture = 0;
 +        glGenTextures(1, &texture);
 +        glBindTexture(GL_TEXTURE_2D, texture);
@@ -7576,6 +7618,12 @@ index 2927437524..c29ce34e2e 100644
 -                         "isWriteable:%d format:%d",
 -                         this, desc.width, desc.height, createProtectedImage, isOutputBuffer,
 -                         desc.format);
++        if (kikiUseNativeVirgl()) {
++            LOG_ALWAYS_FATAL("VirGL failed to import AHardwareBuffer as a GPU texture: "
++                             "output=%d size=%ux%u format=%u usage=%llu",
++                             isOutputBuffer, desc.width, desc.height, desc.format,
++                             static_cast<unsigned long long>(desc.usage));
++        }
 +        // Do not terminate SurfaceFlinger when a host-only buffer format
 +        // cannot be imported. The caller can use the Raster fallback surface.
 +        mWinqFallback = true;
@@ -7584,7 +7632,7 @@ index 2927437524..c29ce34e2e 100644
      }
  }
  
-@@ -87,12 +149,44 @@ GaneshBackendTexture::~GaneshBackendTexture() {
+@@ -87,12 +161,45 @@ GaneshBackendTexture::~GaneshBackendTexture() {
          mDeleteProc(mImageCtx);
          mBackendTexture = {};
      }
@@ -7600,7 +7648,8 @@ index 2927437524..c29ce34e2e 100644
 +    // makes every Android window permanently black even when it is visible.
 +    AHardwareBuffer_Desc desc{};
 +    AHardwareBuffer_describe(mHardwareBuffer, &desc);
-+    if (!isOutputBuffer() && desc.format == AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM &&
++    if (!kikiUseNativeVirgl() && !isOutputBuffer() &&
++        desc.format == AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM &&
 +        desc.width > 0 && desc.height > 0 && desc.stride >= desc.width) {
 +        void* pixels = nullptr;
 +        const int status = AHardwareBuffer_lock(
@@ -7629,11 +7678,11 @@ index 2927437524..c29ce34e2e 100644
      if (mBackendTexture.isValid()) {
          mUpdateProc(mImageCtx, mGrContext.get());
      }
-@@ -134,7 +228,48 @@ sk_sp<SkSurface> GaneshBackendTexture::makeSurface(ui::Dataspace dataspace,
+@@ -134,7 +241,48 @@ sk_sp<SkSurface> GaneshBackendTexture::makeSurface(ui::Dataspace dataspace,
                                                     TextureReleaseProc releaseSurfaceProc,
                                                     ReleaseContext releaseContext,
                                                     ftl::Flags<ColorSpaceOptions> options) {
-+    if (isOutputBuffer()) {
++    if (isOutputBuffer() && !kikiUseNativeVirgl()) {
 +        AHardwareBuffer_Desc desc{};
 +        AHardwareBuffer_describe(mHardwareBuffer, &desc);
 +        void* pixels = nullptr;
@@ -7663,7 +7712,7 @@ index 2927437524..c29ce34e2e 100644
 +        return SkSurfaces::Raster(SkImageInfo::MakeN32Premul(desc.width, desc.height));
 +    }
      const SkColorType colorType = internalColorType();
-+    if (mWinqFallback || colorType == kRGBA_8888_SkColorType) {
++    if (!kikiUseNativeVirgl() && (mWinqFallback || colorType == kRGBA_8888_SkColorType)) {
 +        const auto size = mBackendTexture.dimensions();
 +        auto fallback = SkSurfaces::RenderTarget(
 +                mGrContext.get(), skgpu::Budgeted::kNo,
@@ -7705,10 +7754,14 @@ index f1a56a2260..c6c2a94ac3 100644
  
  } // namespace android::renderengine::skia
 diff --git a/frameworks/native/libs/renderengine/skia/compat/GaneshGpuContext.cpp b/frameworks/native/libs/renderengine/skia/compat/GaneshGpuContext.cpp
-index d163a14b2e..f97e0582f3 100644
+index d163a14b2e..8665f62ea0 100644
 --- a/frameworks/native/libs/renderengine/skia/compat/GaneshGpuContext.cpp
 +++ b/frameworks/native/libs/renderengine/skia/compat/GaneshGpuContext.cpp
-@@ -35,6 +35,9 @@
+@@ -32,13 +32,22 @@
+ #include "skia/compat/SkiaBackendTexture.h"
+ 
+ #include <android-base/macros.h>
++#include <android-base/properties.h>
  #include <common/trace.h>
  #include <log/log_main.h>
  #include <memory>
@@ -7718,7 +7771,16 @@ index d163a14b2e..f97e0582f3 100644
  
  namespace android::renderengine::skia {
  
-@@ -64,6 +67,16 @@ std::unique_ptr<SkiaGpuContext> SkiaGpuContext::MakeVulkan_Ganesh(
+ namespace {
++bool kikiUseNativeVirgl() {
++    static const bool enabled = android::base::GetProperty("ro.hardware.egl", "") == "mesa";
++    return enabled;
++}
++
+ static GrContextOptions ganeshOptions(GrContextOptions::PersistentCache& skSLCacheMonitor) {
+     GrContextOptions options;
+     options.fDisableDriverCorrectnessWorkarounds = true;
+@@ -64,6 +73,16 @@ std::unique_ptr<SkiaGpuContext> SkiaGpuContext::MakeVulkan_Ganesh(
  }
  
  GaneshGpuContext::GaneshGpuContext(sk_sp<GrDirectContext> grContext) : mGrContext(grContext) {
@@ -7735,7 +7797,7 @@ index d163a14b2e..f97e0582f3 100644
      LOG_ALWAYS_FATAL_IF(mGrContext.get() == nullptr, "GrDirectContext creation failed");
  }
  
-@@ -85,9 +98,13 @@ sk_sp<SkSurface> GaneshGpuContext::createRenderTarget(SkImageInfo imageInfo) {
+@@ -85,9 +104,17 @@ sk_sp<SkSurface> GaneshGpuContext::createRenderTarget(SkImageInfo imageInfo) {
      constexpr int kSampleCount = 1; // enable AA
      constexpr SkSurfaceProps* kProps = nullptr;
      constexpr bool kMipmapped = false;
@@ -7746,8 +7808,12 @@ index d163a14b2e..f97e0582f3 100644
 +                                             kSampleCount, kTopLeft_GrSurfaceOrigin, kProps,
 +                                             kMipmapped, mGrContext->supportsProtectedContent());
 +    if (surface) return surface;
-+    // Keep the compositor alive while the MVP GL backend lacks a renderable
-+    // FBO; blur and intermediate passes can still execute on a CPU surface.
++    if (kikiUseNativeVirgl()) {
++        ALOGE("VirGL failed to create GPU render target %dx%d", imageInfo.width(),
++              imageInfo.height());
++        return nullptr;
++    }
++    // Keep the software baseline alive when the MVP GL backend lacks an FBO.
 +    return SkSurfaces::Raster(imageInfo);
  }
  
@@ -7938,16 +8004,30 @@ index e07d499fb2..1ffcf2aead 100644
          ALOGE("registerCallback failed %s", status.getDescription().c_str());
      }
 diff --git a/frameworks/native/services/surfaceflinger/DisplayHardware/FramebufferSurface.cpp b/frameworks/native/services/surfaceflinger/DisplayHardware/FramebufferSurface.cpp
-index f21b96454a..3414e30430 100644
+index f21b96454a..8992ae9b18 100644
 --- a/frameworks/native/services/surfaceflinger/DisplayHardware/FramebufferSurface.cpp
 +++ b/frameworks/native/services/surfaceflinger/DisplayHardware/FramebufferSurface.cpp
-@@ -55,7 +55,8 @@ FramebufferSurface::FramebufferSurface(HWComposer& hwc, PhysicalDisplayId displa
+@@ -25,7 +25,9 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <cstdint>
+ 
++#include <android-base/properties.h>
+ #include <com_android_graphics_libgui_flags.h>
+ #include <gui/BufferItem.h>
+ #include <gui/BufferItemConsumer.h>
+@@ -54,8 +56,11 @@ FramebufferSurface::FramebufferSurface(HWComposer& hwc, PhysicalDisplayId displa
+       : mDisplayId(displayId), mMaxSize(maxSize), mLimitedSize(limitSize(size)), mHwc(hwc) {
      ALOGV("Creating for display %s", to_string(displayId).c_str());
  
-     std::tie(mRendererConsumer, mRendererSurface) = BufferItemConsumer::create(
+-    std::tie(mRendererConsumer, mRendererSurface) = BufferItemConsumer::create(
 -            GRALLOC_USAGE_HW_FB | GRALLOC_USAGE_HW_RENDER | GRALLOC_USAGE_HW_COMPOSER);
-+            GRALLOC_USAGE_HW_FB | GRALLOC_USAGE_HW_RENDER | GRALLOC_USAGE_HW_COMPOSER |
-+            GRALLOC_USAGE_SW_WRITE_OFTEN);
++    uint64_t usage = GRALLOC_USAGE_HW_FB | GRALLOC_USAGE_HW_RENDER | GRALLOC_USAGE_HW_COMPOSER;
++    if (base::GetProperty("ro.hardware.egl", "") != "mesa") {
++        usage |= GRALLOC_USAGE_SW_WRITE_OFTEN;
++    }
++    std::tie(mRendererConsumer, mRendererSurface) = BufferItemConsumer::create(usage);
  
      mRendererConsumer->setName(String8("FramebufferSurface"));
      mRendererConsumer->setDefaultBufferSize(mLimitedSize.width, mLimitedSize.height);

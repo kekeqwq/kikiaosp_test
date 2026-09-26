@@ -84,6 +84,14 @@ scripts/audit-aosp-integration.sh ~/aosp-master
 
 本仓库只交付 Android 镜像与必要的构建信息，不再存放 QEMU 补丁或 Windows 启动脚本。主仓库 [KikiEmu README](https://github.com/kekeqwq/KikiEmu) 中的清单及收集脚本会经 SSH 取回 Android 产物、内核和辅助包，验证 SHA-256 后形成可启动目录。测试结束关闭 QEMU；桌面截图只留本机，不上传此仓库。
 
+### 实验分支：Mesa VirGL 原生合成
+
+`feature/gpu-virgl-20260927` 不替代上表的软件稳定基线。该分支在 Kiki 产品中加入 AOSP 自带的 SDV ARM64 Mesa VirGL 预编译库，并将 `patches/aosp-working-tree.patch` 中的旧 CPU 合成兜底限制在非 Mesa 模式。启动参数 `androidboot.hardwareegl=mesa` 才选择原生 GPU 缓冲路径；默认 `angle` 仍走已验证的软件路径。复现时先切到此分支，再按照上文的 `apply-aosp-integration.sh`、审计和 `m -j8 systemimage vendorimage` 流程构建，不要在已打过补丁的 AOSP 工作树上重复应用。
+
+本分支已构建的候选镜像（尚未完成画面与性能验收）为：`system.img` 1,051,099,136 字节，SHA-256 `ba20dd6a8b09dcd482c1564c9718b84ac6d330c19a1d82ee78cf9aabf8701202`；`vendor.img` 99,700,736 字节，SHA-256 `f60fee46addc3f6bdaa3ebe1f2aa55ce0eeafd1678c6f314d6279ff7d11ac4e7`。第一次 VirGL vendor 测试已能启动 Android 并报告 `GLES: Mesa/X.org, virgl`，但旧 system 的 CPU 合成路径输出全黑；本节新的 system 镜像正针对这一点。配套的 Windows WGL QEMU 补丁、镜像收集 profile 和实测证据在 KikiEmu 主仓库的同名功能分支。
+
+SDV 的三份 Mesa 预编译库来自较旧版本，ELF LOAD 对齐为 4 KiB；本实验只配合现有 4 KiB 内核。产品级 `PRODUCT_CHECK_PREBUILT_MAX_PAGE_SIZE := false` 仅为让这批预编译库进入候选镜像，不代表其可用于 16 KiB 内核；后续若测试 16 KiB，需先重新编译 Mesa 库并恢复检查。
+
 ## 开发约束
 
 在 `feature/<name>` 分支做改动，跑完审计与对应构建/Windows 实测后再快进合并 `main`。构建相关改动归本仓库或内核仓库；QEMU 和 Windows 打包/启动相关改动归 KikiEmu 主仓库。每个稳定里程碑记下 AOSP manifest、内核版本、镜像哈希、实际 QEMU 参数、ADB/画面结论与未解决问题；历史详见 `Work_5day.md`。
