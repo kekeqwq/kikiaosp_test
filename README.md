@@ -7,8 +7,8 @@
 - AOSP 基线是 `android17-release`，不是 `master`。`manifests/aosp-verified-20260926.xml` 固定了本次测试的项目提交。升级上游应另开分支，重新生成补丁和验证镜像，不要把“最新分支”与“已验证快照”混为一谈。
 - 已构建并在 Windows ARM 主机启动：Linux 7.3-rc4 4 KiB 内核、QEMU `virt`、WHPX、`virtio-gpu-pci`、Ranchu HWC3/minigbm。`sys.boot_completed=1`，默认桌面为 Launcher3QuickStep，Settings、三键导航、多任务和通知栏可见且可交互；ADB 经 `127.0.0.1:5555` 可用。
 - 产品只保留 Launcher3、Settings 和必要的 SystemUI/输入法及基础服务。`KikiWindowTest` 源码保留作可选回归测试，但不预装、不自动启动。旧黑屏、绿点、原生测试层和动画 APK 的研究记录在 `Work_5day.md` 与 Git 历史中，不是当前产品配置。
-- 当前 `system.img` 的 SHA-256：`002e67758ff9cec0cc7c31161ba3cf12be3fad7a8fdfd0e6e4c559dcc830c85e`。这是 `m -j8 systemimage` 的输出，且已在 Windows 端再次校验。本功能分支的 `vendor.img` SHA-256 为 `674652a3e965c36b20fd50eff2e3bd7c7a2ae1553cc8a76be3d1ed0925efb396`。
-- `feature/native-resolution-20260926` 已验证真实像素动态分辨率：默认手机窗口 864×1728、Surface 最大化 2784×1876、任意横向窗口 2374×1530，并能恢复到 864×1728。HWC 保留同一 Android 显示对象并原位更新参数，避免模式切换时销毁 layer、重启 SurfaceFlinger 或产生假的断开事件。Windows 全桌截图确认 Android 四边、状态栏和三键导航完整显示，不是旧画布拉伸，也不是只显示左上角。高刷、宿主 GPU 硬件渲染和真实扬声器播放仍未验证；音频当前只是让 Framework 正常启动的软件输出路径。
+- 当前 `system.img` 的 SHA-256：`002e67758ff9cec0cc7c31161ba3cf12be3fad7a8fdfd0e6e4c559dcc830c85e`。这是 `m -j8 systemimage` 的输出，且已在 Windows 端再次校验。当前分辨率验证的 `vendor.img` SHA-256 为 `674652a3e965c36b20fd50eff2e3bd7c7a2ae1553cc8a76be3d1ed0925efb396`。
+- 主线（原 `feature/native-resolution-20260926`）已验证真实像素动态分辨率：默认手机窗口 864×1728、Surface 最大化 2784×1876、任意横向窗口 2374×1530，并能恢复到 864×1728。HWC 保留同一 Android 显示对象并原位更新参数，避免模式切换时销毁 layer、重启 SurfaceFlinger 或产生假的断开事件。Windows 全桌截图确认 Android 四边、状态栏和三键导航完整显示，不是旧画布拉伸，也不是只显示左上角。高刷、宿主 GPU 硬件渲染和真实扬声器播放仍未验证；音频当前只是让 Framework 正常启动的软件输出路径。
 
 ## 目录与边界
 
