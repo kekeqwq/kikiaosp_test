@@ -1,0 +1,7 @@
+aconfig_values {
+    name: "aconfig-values-device_kiki_kikiaosp_test-trunk_staging-com.android.wm.shell-all",
+    package: "com.android.wm.shell",
+    srcs: [
+        "*_flag_values.textproto",
+    ],
+}

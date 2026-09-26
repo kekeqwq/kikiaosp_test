@@ -1,320 +1,99 @@
 # KikiAOSP Test
 
-KikiAOSP is a native ARM64 Android 17 test target for Windows ARM hosts. It is a kernel/Android boot and graphics test environment, not a phone product.
+`kikiaosp_test` 是面向 Windows ARM 上 QEMU/WHPX 的原生 AArch64 Android 17 测试设备，不是 Cuttlefish 手机产品。产品目标为 `kikiaosp_test_arm64_phone`，系统身份为 `KikiAOSP`。此仓库保存设备树、相对 AOSP 上游的源码补丁、精确 manifest 快照与构建审计；[kikiaosp_kernel](https://github.com/kekeqwq/kikiaosp_kernel) 保存 4 KiB 主线内核，[KikiEmu](https://github.com/kekeqwq/KikiEmu) 保存 Windows 启动与截图脚本。
 
-## Verified baseline and active target
+## 2026-09-26 验证状态
 
-- Device: `kikiaosp_test`
-- Product: `kikiaosp_test_arm64_phone`
-- System identity: `KikiAOSP`
-- AOSP baseline: Android 17 development `master` manifest
-- Kernel: Linux `v7.3-rc4`, 4 KiB pages, from https://github.com/kekeqwq/kikiaosp_kernel
-- Emulator: upstream QEMU `aarch64-softmmu`, machine `virt`, `virtio-gpu-pci`
-- Android graphics: ranchu HWC3/minigbm and SurfaceFlinger client composition
+- AOSP 基线是 `android17-release`，不是 `master`。`manifests/aosp-verified-20260926.xml` 固定了本次测试的项目提交。升级上游应另开分支，重新生成补丁和验证镜像，不要把“最新分支”与“已验证快照”混为一谈。
+- 已构建并在 Windows ARM 主机启动：Linux 7.3-rc4 4 KiB 内核、QEMU `virt`、WHPX、`virtio-gpu-pci`、Ranchu HWC3/minigbm。`sys.boot_completed=1`，默认桌面为 Launcher3QuickStep，Settings、三键导航、多任务和通知栏可见且可交互；ADB 经 `127.0.0.1:5555` 可用。
+- 产品只保留 Launcher3、Settings 和必要的 SystemUI/输入法及基础服务。`KikiWindowTest` 源码保留作可选回归测试，但不预装、不自动启动。旧黑屏、绿点、原生测试层和动画 APK 的研究记录在 `Work_5day.md` 与 Git 历史中，不是当前产品配置。
+- 当前 `system.img` 的 SHA-256：`002e67758ff9cec0cc7c31161ba3cf12be3fad7a8fdfd0e6e4c559dcc830c85e`。这是 `m -j8 systemimage` 的输出，且已在 Windows 端再次校验。
+- 未验证动态分辨率、高刷、宿主 GPU 硬件渲染和真实扬声器播放。普通窗口可用；最大化仍会拉伸模糊或短暂黑屏。音频当前只是让 Framework 正常启动的软件输出路径，不能宣称已有声音。
 
-The released black-screen image is a historical reference checkpoint, not the active UI product. It intentionally has no Launcher or Android app window. Its SurfaceFlinger/HWC/DRM startup and black scanout were verified separately; that does not prove Android WindowManager or an APK is rendering.
+## 目录与边界
 
-The current device-tree work now composes AOSP's generic core with a deliberately small native UI set (`Launcher3QuickStep`, `Settings`, `SystemUI`, `LatinIME`, and the `KikiWindowTest` APK). The product selects the full Framework startup branch rather than the earlier boot-only/minimal-service mode, and Kiki init no longer stops Android native services. Some Kiki-specific Framework conditionals remain in the tracked AOSP patch set and still require a boot audit. This source configuration has not yet been rebuilt or boot-validated: the Android UI, Close button, two animated APK frames, and a 30-minute run remain unproven acceptance gates.
-
-The minimal Ranchu init hook calls `mount_all /vendor/etc/fstab.ranchu` during `fs` and `late-fs`; keep both files under `vendor/etc` so `/data` and the remaining test partitions are mounted. `/data` is a `latemount` entry because Android mounts it during late-fs after core properties are available.
-
-## Repository layout
-
-```
-device/kiki/kikiaosp_test/       device/product definition
-patches/aosp-working-tree.patch  tracked AOSP source changes
-patches/aosp-render-output.patch raster client-target bring-up changes
-patches/archive/                    superseded patch drafts, not applied
-overlays/                        required formerly-untracked source files
-scripts/apply-aosp-integration.sh
-scripts/sync-device-tree.sh
+```text
+device/kiki/kikiaosp_test/         本设备及产品定义
+patches/aosp-working-tree.patch   此快照下全部 AOSP tracked 源码改动；唯一应用入口
+overlays/                         AOSP 上游树中新增的少量文件
+manifests/                        已验证的 AOSP 精确项目修订
+patches/qemu-*.patch              Windows ARM QEMU 的下游适配
+scripts/                          同步、应用、审计和历史回归工具
+Work_5day.md                      开发过程与实测日志
 ```
 
-The upstream AOSP checkout is never committed here. Apply this tree and patch set explicitly to a clean checkout.
+所有 Kiki 设备改动先在此仓库维护，再同步进 AOSP 工作树。不要把 Kiki 改动提交到 AOSP 上游仓库。`aosp-working-tree.patch` 是从测试过的 AOSP 工作树一次性生成的；旧的分片补丁不再应用，避免互相重叠。`scripts/audit-aosp-integration.sh` 要求 AOSP tracked 改动恰好由此补丁覆盖，并反向 dry-run 检查其内容。
 
-The active patch set is file-disjoint and each patch is reverse-dry-run checked
-by `scripts/audit-aosp-integration.sh`. The former `aosp-hwc-dmabuf-map.patch`
-was an overlapping intermediate edit to `GuestFrameComposer.cpp`; its final
-combined source state is carried by `aosp-hwc-device-buffer-map.patch`, so the
-intermediate is archived and is not applied.
+## 从新 Linux 构建机准备 Android
 
-## 1. Prepare a Linux build host
-
-Arch example (use equivalent packages on Debian/Ubuntu):
+至少预留 32 GiB 内存及约 250 GiB 磁盘。Arch Linux 示例：
 
 ```bash
 sudo pacman -Syu
 sudo pacman -S --needed git curl python unzip zip rsync bc bison flex gcc clang lld make ninja cmake cpio lz4 pigz openssl libelf libxml2 ncurses readline zlib perl schedtool fontconfig freetype repo
-mkdir -p ~/projects
-git clone https://github.com/kekeqwq/kikiaosp_kernel.git ~/projects/kikiaosp_kernel
+mkdir -p ~/projects ~/aosp-master
 git clone https://github.com/kekeqwq/kikiaosp_test.git ~/projects/kikiaosp_test
-```
-
-Use at least 32 GiB RAM and about 250 GiB free disk. Run long builds in `tmux`.
-
-## 2. Fetch original AOSP
-
-```bash
-mkdir -p ~/aosp-master
+git clone https://github.com/kekeqwq/kikiaosp_kernel.git ~/projects/kikiaosp_kernel
 cd ~/aosp-master
-repo init -u https://android.googlesource.com/platform/manifest \
-  -b master --partial-clone --clone-filter=blob:limit=10M
-repo sync -c -j"$(nproc)" --fail-fast
-test -f .repo/manifest.xml
-repo list | wc -l
+repo init -u https://android.googlesource.com/platform/manifest -b android17-release --partial-clone --clone-filter=blob:limit=10M
 ```
 
-Sync is incremental. The development proxy used previously was:
+要严格复现本次基线，将此仓库的快照作为 repo manifest 使用，而不是让 `android17-release` 浮动到新的提交：
 
 ```bash
-export HTTP_PROXY=http://192.168.2.2:6152
-export HTTPS_PROXY=http://192.168.2.2:6152
-repo sync -c -j8
+cp ~/projects/kikiaosp_test/manifests/aosp-verified-20260926.xml .repo/manifests/kikiaosp-verified.xml
+repo init -m kikiaosp-verified.xml
+repo sync -c -j8 --fail-fast
 ```
 
-## 3. Apply Kiki integration
+在网络不稳定的开发机上，可按自己的代理配置设置 `HTTP_PROXY`、`HTTPS_PROXY` 后重试 `repo sync`；它会复用已下载对象。当前实验机使用过 `http://192.168.2.2:6152`，但这只是本地网络地址，不是项目依赖。
 
 ```bash
 cd ~/projects/kikiaosp_test
-./scripts/apply-aosp-integration.sh ~/aosp-master
-cd ~/aosp-master
-repo status
-```
-
-The script synchronizes `device/kiki/kikiaosp_test` without deleting unknown files in the AOSP destination, applies the graphics/runtime patch set, and copies the overlays. Use a fresh checkout for a reproducible upstream baseline; to return to pure upstream, restore it from version control. Do not commit Kiki changes into upstream AOSP.
-
-After editing files under `device/kiki/kikiaosp_test/` in this repository,
-sync that device tree into the separate AOSP working tree before building:
-
-```bash
-cd ~/projects/kikiaosp_test
-scripts/sync-device-tree.sh ~/aosp-master
-```
-
-This copies the repository's device tree without touching the rest of AOSP.
-
-## 4. Build Android
-
-```bash
+scripts/apply-aosp-integration.sh ~/aosp-master
+scripts/audit-device-tree-profile.sh
+scripts/audit-aosp-integration.sh ~/aosp-master
 cd ~/aosp-master
 source build/envsetup.sh
 lunch kikiaosp_test_arm64_phone-trunk_staging-userdebug
 tmux new -s kikiaosp-build
-m -j"$(nproc)" systemimage
+m -j8 systemimage vendorimage
 ```
 
-Detach with `Ctrl-b d`; reattach with `tmux a -t kikiaosp-build`. Reuse the same `out/` directory for incremental builds. Main output is `out/target/product/kikiaosp_test/` containing `system.img`, `vendor.img`, `product.img`, `system_ext.img`, `odm.img`, and vendor-boot/ramdisk outputs.
+构建时按实际内存调整 `-j`；`out/` 应保留用于增量构建。`Ctrl-b d` 脱离 tmux，`tmux a -t kikiaosp-build` 查看；完成后关闭该会话。设备树更新后执行 `scripts/sync-device-tree.sh ~/aosp-master`，然后再次运行两项审计，避免 AOSP 工作树与此仓库版本不一致。上游 AOSP 更新后旧补丁可能不再适用，需要在独立升级分支解决冲突并重测。
 
-## 5. Build the prepared kernel
+如需从当前已测试的 AOSP 工作树收敛新源码改动：
+
+```bash
+cd ~/projects/kikiaosp_test
+scripts/refresh-aosp-working-tree-patch.sh ~/aosp-master
+scripts/audit-aosp-integration.sh ~/aosp-master
+```
+
+内核独立构建：
 
 ```bash
 cd ~/projects/kikiaosp_kernel
 nix build
-mkdir -p ~/kiki-artifacts
-cp -L result/boot/kernel ~/kiki-artifacts/kernel-linux-7.3-rc4-4k
+ls -lh result/boot/kernel result/boot/config
 ```
 
-The flake emits `result/boot/kernel`, `result/boot/vmlinux`, `result/boot/config`, and `result/modules/`. The verified rc4 source is `kikiaosp_kernel` commit `101444a3717c1f1251d586572975853ad1bf3aea`. Check `result/boot/config` and `uname -r` after boot before replacing the frozen test artifact.
+应核对内核配置、4 KiB 页大小和目标镜像的 SHA-256 后再替换已验证产物；本次 Windows 基线使用 `kernel-linux-7.3-rc4-4k-netfilter-20260925`。
 
-## 6. Assemble test assets
+## Windows ARM QEMU 与启动
 
-QEMU needs a kernel, Android vendor ramdisk, system image, userdata image, and `misc.img`. Optional product/system_ext/vendor/odm images can be attached as additional virtio disks.
+在 Windows ARM 的 MSYS2 **CLANGARM64** 环境中构建原生 ARM64 QEMU，不要使用 x86_64 UCRT64 目标。将上游 QEMU 固定在 `5f664cd37aec17e8145aa117d8da68f507edc8f1`，依次应用 `patches/qemu-windows-gtk-full-redraw.patch` 和 `patches/qemu-windows-arm64-gtk-touch.patch`；前者修复 GTK 部分重绘，后者是当前触摸坐标及 Windows ARM 构建适配。按照上游 QEMU 的 Windows/MSYS2 依赖说明安装 GTK3、编译工具和相关库，至少构建 `aarch64-softmmu` 并启用 GTK/WHPX；产物 PE Machine 应为 `0xAA64`。当前实测 QEMU 源码处于首个补丁形成的提交 `bde658e` 加第二个补丁的工作树状态，构建出的本机程序为 ARM64 PE。
 
-The verified reference layout is:
-
-```
-kiki-artifacts/
-  kernel-linux-7.3-rc4-4k
-  kiki-kernel-ramdisk.img
-  kiki-kernel-system-black-adb.img
-  userdata-qemu-fresh.img
-  misc.img
-```
-
-`kiki-kernel-system-black-adb.img` is made by `scripts/repack-black-baseline.sh` from the frozen `kiki-kernel-system.img` EROFS tree. The repack adds the tracked TCP-only `adbd`, a static DRM black-frame helper, and the `kikiaosp_test` product identity. A plain `m systemimage` output is not yet equivalent to this frozen flat-image baseline.
-
-Download the frozen base image and ramdisk from the repository's
-`black-baseline-2026-09-23` GitHub release, then verify the base hash shown in
-section 11. A fresh 8 GiB sparse `userdata-qemu-fresh.img` and 4 MiB `misc.img`
-can be created with `qemu-img create -f raw`; the QEMU command uses `-snapshot`
-so tests do not persist writes to these files.
-
-```bash
-gh release download black-baseline-2026-09-23 \
-  --repo kekeqwq/kikiaosp_test --dir ~/kiki-artifacts
-sha256sum ~/kiki-artifacts/kiki-kernel-system.img \
-  ~/kiki-artifacts/kiki-kernel-ramdisk.img
-```
-
-## 7. Build upstream QEMU with MSYS2
-
-Use the **MSYS2 UCRT64** terminal, not the plain MSYS shell:
-
-```bash
-pacman -Syu
-# restart UCRT64 after the first upgrade
-pacman -Su
-pacman -S --needed git make diffutils patch perl python pkgconf ninja \
-  mingw-w64-ucrt-x86_64-toolchain \
-  mingw-w64-ucrt-x86_64-glib2 mingw-w64-ucrt-x86_64-gtk3 \
-  mingw-w64-ucrt-x86_64-SDL2 mingw-w64-ucrt-x86_64-libslirp \
-  mingw-w64-ucrt-x86_64-zstd mingw-w64-ucrt-x86_64-libusb
-
-cd ~/projects
-git clone https://gitlab.com/qemu-project/qemu.git qemu
-cd qemu
-git submodule update --init --recursive
-./configure --target-list=aarch64-softmmu --enable-whpx --enable-gtk --disable-werror
-make -j"$(nproc)"
-./build/qemu-system-aarch64.exe --version
-```
-
-If GTK is unavailable, use `--disable-gtk --enable-sdl` for a functionality build. The tested graphical mode is `-display gtk,gl=off`; no Habumi fork is used. On Windows ARM, `-accel whpx` uses Hyper-V; fallback is `-accel tcg,thread=multi`.
-
-## 8. Start the test system on Windows
+将编译好的 `qemu-system-aarch64.exe` 放在 Windows 启动仓库 `tools/qemu-src/build/`，把内核、ramdisk、system/vendor/data/misc/空分区镜像放在 `aosp/windows-arm64-test/`。文件名及启动参数以该仓库 [README](https://github.com/kekeqwq/KikiEmu) 和 `tools/run_kikiaosp_touch_local.ps1` 为准：
 
 ```powershell
-$qemu = "C:\path\to\qemu\build\qemu-system-aarch64.exe"
-$d = "C:\path\to\kiki-artifacts"
-$append = "earlycon=pl011,0x09000000 console=ttyAMA0 loglevel=8 printk.devkmsg=on audit=0 androidboot.hardware=ranchu androidboot.hardwareegl=angle androidboot.hardware.egl=angle androidboot.hardware.gralloc=minigbm androidboot.hardware.hwcomposer=ranchu androidboot.hardware.vulkan=pastel androidboot.hardware.hwcomposer.mode=client androidboot.hardware.hwcomposer.display_finder_mode=drm androidboot.hardware.guest_hwui_renderer=gles androidboot.debug.renderengine.backend=skiaglthreaded androidboot.selinux=permissive enforcing=0 androidboot.force_normal_boot=1 androidboot.verifiedbootstate=orange androidboot.init_fatal_reboot_target=none binder.devices=binder,hwbinder,vndbinder"
-
-& $qemu -M virt -accel whpx -cpu host -m 4096 -smp 4 `
-  -kernel "$d\kernel-linux-7.3-rc4-4k" -initrd "$d\kiki-kernel-ramdisk.img" `
-  -append $append `
-  -drive "if=none,file=$d\kiki-kernel-system-black-adb.img,format=raw,readonly=on,id=system" -device virtio-blk-pci,drive=system `
-  -drive "if=none,file=$d\userdata-qemu-fresh.img,format=raw,id=userdata" -device virtio-blk-pci,drive=userdata `
-  -drive "if=none,file=$d\misc.img,format=raw,id=misc" -device virtio-blk-pci,drive=misc `
-  -netdev user,id=net0,hostfwd=tcp:127.0.0.1:5555-:5555 -device virtio-net-pci,netdev=net0 `
-  -device virtio-gpu-pci,hostmem=256M,xres=1080,yres=2400 -display gtk,gl=off `
-  -serial "file:$d\qemu-kikiaosp.log" -snapshot
+.\tools\run_kikiaosp_touch_local.ps1
+adb connect 127.0.0.1:5555
+adb shell getprop sys.boot_completed
 ```
 
-Watch serial output with `Get-Content "$d\qemu-kikiaosp.log" -Wait`. The graphics checkpoint is:
+脚本使用 `-snapshot`，本次运行不会写回基础磁盘。测试结束要关闭 QEMU 窗口。截图只留在本机 `~/Downloads/temp/`，不要把整张桌面证据意外上传 GitHub。
 
-```
-WINQ-SF primary connected=1
-WINQ-SF: after flinger init
-```
+## 开发约束
 
-Stop every test:
-
-```powershell
-Get-Process qemu-system-aarch64 -ErrorAction SilentlyContinue | Stop-Process -Force
-```
-
-Linux TCG uses the same devices, replacing `-accel whpx -cpu host` with `-accel tcg,thread=multi -cpu cortex-a53`.
-
-## 9. Proven state and next step
-
-The frozen black baseline previously passed a 1800-second no-panic/no-SIGSEGV/no-core-service-restart run, with ARM64 kernel boot, Android init/Binder/servicemanager/allocator/HWC/SurfaceFlinger startup, DRM connector detection, and ADB. Separately, the native test client submitted two solid-color SurfaceComposer layers (background and moving square); QEMU monitor captures proved two distinct frames from the actual display output. That is display-pipeline evidence, not evidence of an Android Activity window.
-
-This proves the minimal Android layer → SurfaceFlinger → GuestFrameComposer → DRM/KMS → QEMU display path for solid-color layers. It does not yet prove arbitrary app-buffer/client-target composition, a launcher/window manager, input, sustained stability, or high-refresh operation. The current acceptance target is the visible animated `KikiWindowTest` Android Activity with a usable Close button and at least two distinct Windows desktop frames. See [the two-frame rendering checkpoint](#12-native-two-frame-ui-proof-2026-09-23) for the earlier native-layer evidence and hashes.
-
-## 10. Development history
-
-Work in this repository or `kikiaosp_kernel`, not by committing Kiki changes into upstream AOSP:
-
-```bash
-git checkout -b feature/<name>
-git add .
-git commit -m "<scope>: <change>"
-git push -u origin feature/<name>
-```
-
-Every reproducible checkpoint records the AOSP manifest revision, kernel commit, image SHA-256, QEMU arguments, serial conclusion, and known limitations in `Work_5day.md`.
-
-Before any build, run the integration audit from the device repository:
-
-```bash
-./scripts/audit-aosp-integration.sh ~/aosp-master
-./scripts/audit-device-tree-profile.sh
-```
-
-The audit verifies that every AOSP modification is represented by this repository's patch/overlay set and that the selected product is the fixed `userdebug` target. It fails closed if an unrelated AOSP change or an `eng`/other product configuration is present, preventing an accidental configuration switch and installclean.
-
-## 11. Repack the active black baseline
-
-The frozen base image is published as a release asset and has SHA-256
-`ad60b844b0a23c835aaf129f548b0fff03f1bf01588cb6645c9b3a0f0f6b20d7`.
-Keep `kiki-kernel-system.img` and `kiki-kernel-ramdisk.img` from the verified
-asset set. The independent repository contains the source and repack recipe;
-the 491 MB base image is hosted as a release asset rather than Git history.
-
-With `erofs-utils` and an ARM64 Linux cross compiler available on the Linux
-build host, run:
-
-```bash
-cd ~/projects/kikiaosp_test
-scripts/repack-black-baseline.sh \
-  ~/kiki-artifacts/kiki-kernel-system.img \
-  ~/aosp-master \
-  ~/kiki-artifacts/kiki-kernel-system-black-adb.img
-```
-
-Set `CROSS_CC=/path/to/aarch64-unknown-linux-gnu-gcc` if the compiler is not
-on `PATH`. The script extracts the EROFS base, installs the tracked ADB and DRM
-sources, copies `adbd_flags_c_lib.so` from the matching AOSP build, fixes the
-old image's `vsoc_arm64` product property, checks the repacked filesystem, and
-prints its SHA-256. The tested output hash is
-`c0c7f7f3737052dd4f53f8d3892d0278aa4cb2f0f32ec12f07a3aebde2054cc7`.
-Two independent repacks produced byte-identical images with this hash.
-
-On Windows, `scripts/run-black-baseline.ps1 -Qemu <qemu-system-aarch64.exe>
--Assets <kiki-artifacts>` launches the exact tested device order and QEMU
-options. The window remains open until you close QEMU. After `adb connect
-127.0.0.1:5555`, verify `adb shell getprop ro.product.device` returns
-`kikiaosp_test`. The serial log must contain `KIKI-BLACK scanout active`.
-
-## 12. Native animated `TEST OK` UI proof (2026-09-23)
-
-The minimal visible UI now renders readable `TEST OK` text and an animated
-square using only native SurfaceComposer solid-color effect layers. The text is
-a 5×7 bitmap font represented by 53 horizontal color strokes; the composition
-also has one dark background and one moving square. The square changes position
-and color every 500 ms. No Launcher, Android app UI framework, or new system
-service was added; the existing opt-in `kiki_test_ui` init service is used.
-
-The upstream AOSP tree and this repository are separate working directories.
-After changing the device tree, sync it before compiling so Soong does not
-silently reuse an older AOSP-side copy:
-
-```bash
-cd ~/projects/kikiaosp_test
-scripts/sync-device-tree.sh ~/aosp-master
-cd ~/aosp-master
-source build/envsetup.sh
-lunch kikiaosp_test_arm64_phone-trunk_staging-userdebug
-m kiki_test_ui
-cd ~/projects/kikiaosp_test
-scripts/repack-black-baseline.sh \
-  ~/kiki-kernel-system-black-adb.img \
-  ~/aosp-master \
-  ~/kiki-kernel-system-sf-guest-hwc3-map-ui-test-ok.img surface-test
-```
-
-The frozen image uses the active non-APEX Ranchu composer at
-`/system/bin/hwcomposer`; the guest minigbm mapper's CPU lock returns `-38`
-(`ENOSYS`), so the opt-in HWC path maps the synchronized composer dma-buf and
-submits it through the existing DRM flush path. Keep `mode=guest` opt-in; the
-frozen black-baseline boot remains unchanged.
-
-The tested image SHA-256 is
-`bfe1c79716c623f684cb7376f9791c5df63ffa08545f0303fcb9c6e08d166f38`.
-Windows QEMU used upstream `qemu-system-aarch64`, WHPX, `virtio-gpu-pci`
-640×480, GTK `gl=off`, and `androidboot.hardware.hwcomposer.mode=guest`.
-Evidence PNGs are saved in `docs/evidence/`:
-
-| Evidence PNG | PNG SHA-256 | Source QEMU PPM SHA-256 | Visible result |
-| --- | --- | --- | --- |
-| `kiki-native-test-ok-frame-1.png` | `78a9be76cd1655c1ea7dc116b920a6109cb9065276c908ac2ad93e36fcc33979` | `678406519929349d192b7e7fd9eaacf978f6b70640ccb2cbbf36bd4a63d99060` | `TEST OK`, square at one position/color |
-| `kiki-native-test-ok-frame-2.png` | `4aaaf0fde4d3e0db58ccd834adcae4d9823ab12a5ca4951c657ff459dfd98158` | `a4df9098b298373cf4c9f3f7202c1a1d62c15f51743586c3c30a8f5dbfeea128` | `TEST OK`, square moved and changed color |
-
-Both captures are direct QEMU monitor screendumps of Android's displayed
-output. Four consecutive follow-up captures showed the text and background;
-one earlier sample immediately after the first successful frame showed only
-the square, so this is proof of animated rendering—not yet a long-duration
-stability or high-refresh result. At the last check, the guest serial log had
-recorded 1,210 successful animation transactions through 658 guest seconds and
-QEMU was still running. The broader path is now proven for native solid-color
-layers; ordinary app-buffer/client-target composition, input, and high-refresh
-behavior remain future work.
+在 `feature/<name>` 分支做改动，跑完审计与对应构建/Windows 实测后再快进合并 `main`。只在设备树仓库和内核仓库开发各自内容；KikiEmu 仓库是本机启动入口。每个稳定里程碑记下 AOSP manifest、内核版本、镜像哈希、实际 QEMU 参数、ADB/画面结论与未解决问题；历史详见 `Work_5day.md`。

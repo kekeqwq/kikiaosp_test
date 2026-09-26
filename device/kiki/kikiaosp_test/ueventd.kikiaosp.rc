@@ -1,0 +1,6 @@
+# KikiAOSP virtio-gpu: grant the allocator access to the primary DRM node.
+# The primary node is required for DRM_IOCTL_MODE_CREATE_DUMB; renderD128
+# cannot serve this KikiAOSP software-rendering allocation path.
+/dev/dri/card0 0660 system graphics
+/dev/dri/controlD64 0660 system graphics
+/dev/dri/renderD128 0666 system graphics

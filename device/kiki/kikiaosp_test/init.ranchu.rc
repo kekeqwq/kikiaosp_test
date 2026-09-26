@@ -1,5 +1,17 @@
 # Minimal Ranchu partition mounting. Hardware-specific service startup is
 # intentionally handled by the existing Kiki graphics and ADB init files.
+# Keep the upstream Goldfish boot-property bridge needed by ART and graphics,
+# without importing its unrelated emulator/phone service graph.
+on early-init
+    setprop ro.hardware.egl ${ro.boot.hardwareegl:-emulation}
+    setprop ro.hardware.vulkan ${ro.boot.hardware.vulkan}
+    setprop ro.hardware.gralloc ${ro.boot.hardware.gralloc:-ranchu}
+    setprop ro.opengles.version ${ro.boot.opengles.version}
+    setprop dalvik.vm.heapgrowthlimit ${ro.boot.dalvik.vm.heapgrowthlimit:-256m}
+    setprop dalvik.vm.heapsize ${ro.boot.dalvik.vm.heapsize:-512m}
+    setprop debug.hwui.renderer ${ro.boot.debug.hwui.renderer:-skiagl}
+    setprop debug.renderengine.backend ${ro.boot.debug.renderengine.backend:-skiaglthreaded}
+
 on fs
     mount_all /vendor/etc/fstab.ranchu --early
 

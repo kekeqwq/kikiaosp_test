@@ -1,4 +1,3 @@
-
 diff --git a/art/build/apex/Android.bp b/art/build/apex/Android.bp
 index 37623cec17..87b059592b 100644
 --- a/art/build/apex/Android.bp
@@ -19,6 +18,46 @@ index 37623cec17..87b059592b 100644
          "libdexfiled",
          "libopenjdkd",
          "libopenjdkjvmtid",
+diff --git a/art/build/apex/manifest-art-debug.json b/art/build/apex/manifest-art-debug.json
+index 5eee90c40b..d04b093bab 100644
+--- a/art/build/apex/manifest-art-debug.json
++++ b/art/build/apex/manifest-art-debug.json
+@@ -8,10 +8,14 @@
+   "version": 990091000,
+ 
+   "provideNativeLibs": [
++    "libart.so",
+     "libjdwp.so"
+   ],
+   "requireNativeLibs": [
+-    "libicu_jni.so"
++    "libicu_jni.so",
++    "libicuuc.so",
++    "libicui18n.so",
++    "libz.so"
+   ]
+   // LINT.ThenChange(manifest-art.json)
+ }
+diff --git a/art/build/apex/manifest-art.json b/art/build/apex/manifest-art.json
+index 83e2950944..dda5ac8d92 100644
+--- a/art/build/apex/manifest-art.json
++++ b/art/build/apex/manifest-art.json
+@@ -7,10 +7,14 @@
+   "version": 0,
+ 
+   "provideNativeLibs": [
++    "libart.so",
+     "libjdwp.so"
+   ],
+   "requireNativeLibs": [
+-    "libicu_jni.so"
++    "libicu_jni.so",
++    "libicuuc.so",
++    "libicui18n.so",
++    "libz.so"
+   ]
+   // LINT.ThenChange(manifest-art-debug.json)
+ }
 diff --git a/art/libartbase/base/file_utils.cc b/art/libartbase/base/file_utils.cc
 index 790bac8057..559525f122 100644
 --- a/art/libartbase/base/file_utils.cc
@@ -34,7 +73,7 @@ index 790bac8057..559525f122 100644
  std::string GetBootImageLocationForDefaultBcp(bool no_boot_image,
                                                std::string user_defined_boot_image,
 diff --git a/art/runtime/class_linker.cc b/art/runtime/class_linker.cc
-index 4b3c66770f..615b658477 100644
+index 4b3c66770f..26c8fc9231 100644
 --- a/art/runtime/class_linker.cc
 +++ b/art/runtime/class_linker.cc
 @@ -16,6 +16,8 @@
@@ -54,11 +93,17 @@ index 4b3c66770f..615b658477 100644
    // The class failed to initialize on a previous attempt, so we want to throw
    // a NoClassDefFoundError (v2 2.17.5).  The exception to this rule is if we
    // failed in verification, in which case v2 5.4.1 says we need to re-throw
-@@ -3311,6 +3314,7 @@ ObjPtr<mirror::Class> ClassLinker::FindClass(Thread* self,
+@@ -3311,6 +3314,13 @@ ObjPtr<mirror::Class> ClassLinker::FindClass(Thread* self,
        // The boot class loader is searched ahead of the application class loader, failures are
        // expected and will be wrapped in a ClassNotFoundException. Use the pre-allocated error to
        // trigger the chaining with a proper stack trace.
 +      LOG(ERROR) << "KIKI-ART boot class missing " << descriptor;
++      if (std::string_view(descriptor) == "Landroid/util/StatsEvent;") {
++        LOG(ERROR) << "KIKI-ART bcp-size=" << boot_class_path_.size();
++        for (const DexFile* dex_file : boot_class_path_) {
++          LOG(ERROR) << "KIKI-ART bcp-entry=" << dex_file->GetLocation();
++        }
++      }
        ObjPtr<mirror::Throwable> pre_allocated =
            Runtime::Current()->GetPreAllocatedNoClassDefFoundError();
        self->SetException(pre_allocated);
@@ -192,7 +237,7 @@ index b83ac60f9b..2ffcdd3ab2 100644
        dex_file_pointer = external_dex_files_[i]->Begin();
      } else {
 diff --git a/art/runtime/runtime.cc b/art/runtime/runtime.cc
-index ea1052882a..cf3300ecdc 100644
+index ea1052882a..85d4d14900 100644
 --- a/art/runtime/runtime.cc
 +++ b/art/runtime/runtime.cc
 @@ -43,6 +43,14 @@
@@ -366,9 +411,8 @@ index ea1052882a..cf3300ecdc 100644
 +    winq_art_kmsg("Runtime::InitNativeMethods before icu");
      std::string error_msg;
 -    if (!java_vm_->LoadNativeLibrary(
--          env, "libicu_jni.so", nullptr, java_lang_Object, &error_msg)) {
 +    if (!android::base::GetBoolProperty("ro.kikiaosp.skip_icu", false) && !java_vm_->LoadNativeLibrary(
-+          env, "/system/lib64/libicu_jni.so", nullptr, java_lang_Object, &error_msg)) {
+           env, "libicu_jni.so", nullptr, java_lang_Object, &error_msg)) {
        LOG(FATAL) << "LoadNativeLibrary failed for \"libicu_jni.so\": " << error_msg;
      }
 +    winq_art_kmsg("Runtime::InitNativeMethods after icu");
@@ -377,8 +421,7 @@ index ea1052882a..cf3300ecdc 100644
 +    winq_art_kmsg("Runtime::InitNativeMethods before javacore");
      std::string error_msg;
      if (!java_vm_->LoadNativeLibrary(
--          env, "libjavacore.so", nullptr, java_lang_Object, &error_msg)) {
-+          env, "/system/lib64/libjavacore.so", nullptr, java_lang_Object, &error_msg)) {
+           env, "libjavacore.so", nullptr, java_lang_Object, &error_msg)) {
        LOG(FATAL) << "LoadNativeLibrary failed for \"libjavacore.so\": " << error_msg;
      }
 +    winq_art_kmsg("Runtime::InitNativeMethods after javacore");
@@ -386,10 +429,8 @@ index ea1052882a..cf3300ecdc 100644
    {
 +    winq_art_kmsg("Runtime::InitNativeMethods before openjdk");
      constexpr const char* kOpenJdkLibrary = kIsDebugBuild
--                                                ? "libopenjdkd.so"
--                                                : "libopenjdk.so";
-+                                                ? "/system/lib64/libopenjdkd.so"
-+                                                : "/system/lib64/libopenjdk.so";
+                                                 ? "libopenjdkd.so"
+                                                 : "libopenjdk.so";
      std::string error_msg;
 -    if (!java_vm_->LoadNativeLibrary(
 +    if (!android::base::GetBoolProperty("ro.kikiaosp.skip_openjdk", true) && !java_vm_->LoadNativeLibrary(
@@ -418,7 +459,7 @@ index ea1052882a..cf3300ecdc 100644
 +  winq_art_kmsg("Runtime::InitOptionalNativeMethods after icu");
 +  {
 +    constexpr const char* kOpenJdkLibrary = kIsDebugBuild
-+        ? "/system/lib64/libopenjdkd.so" : "/system/lib64/libopenjdk.so";
++        ? "libopenjdkd.so" : "libopenjdk.so";
 +    std::string error_msg;
 +    if (!java_vm_->LoadNativeLibrary(env, kOpenJdkLibrary, nullptr,
 +                                     java_lang_Object, &error_msg)) {
@@ -509,7 +550,6 @@ index c3a28d5815..94e505225a 100644
    // TODO: DCHECK(!IsExceptionPending());
    tlsPtr_.exception = new_exception.Ptr();
  }
-
 diff --git a/build/make/core/Makefile b/build/make/core/Makefile
 index 39cad66a44..62eddc9280 100644
 --- a/build/make/core/Makefile
@@ -542,7 +582,6 @@ index 2bcc764b55..3f273b4053 100644
  # Sort/dedup all PRODUCT_PACKAGES variables. This is every PRODUCT_PACKAGES_* variable that appears
  # in product-installed-modules.
  PRODUCT_PACKAGES := $(sort $(PRODUCT_PACKAGES))
-
 diff --git a/build/release/flag_values/trunk_staging/RELEASE_CROSS_DEVICE_SYNC.textproto b/build/release/flag_values/trunk_staging/RELEASE_CROSS_DEVICE_SYNC.textproto
 index c7cb33bb5..53132ee17 100644
 --- a/build/release/flag_values/trunk_staging/RELEASE_CROSS_DEVICE_SYNC.textproto
@@ -553,7 +592,6 @@ index c7cb33bb5..53132ee17 100644
 -  bool_value: true
 +  bool_value: false
  }
-
 diff --git a/build/soong/cc/binary.go b/build/soong/cc/binary.go
 index 6d8d66c16..51b2644f0 100644
 --- a/build/soong/cc/binary.go
@@ -569,7 +607,6 @@ index 6d8d66c16..51b2644f0 100644
  
  	ctx.InstallAbsoluteSymlink(dir, file.Base(), target)
  	binary.postInstallCmds = append(binary.postInstallCmds, makeSymlinkCmd(dirOnDevice, file.Base(), target))
-
 diff --git a/device/generic/goldfish/hals/gralloc/allocator.cpp b/device/generic/goldfish/hals/gralloc/allocator.cpp
 index 3f2632ff..95877eda 100644
 --- a/device/generic/goldfish/hals/gralloc/allocator.cpp
@@ -661,24 +698,26 @@ index 74dfb67a..f41fd404 100644
      ],
  }
 diff --git a/device/generic/goldfish/hals/hwc3/ClientFrameComposer.cpp b/device/generic/goldfish/hals/hwc3/ClientFrameComposer.cpp
-index 10c6ce89..3e1e94bc 100644
+index 10c6ce89..7d842df6 100644
 --- a/device/generic/goldfish/hals/hwc3/ClientFrameComposer.cpp
 +++ b/device/generic/goldfish/hals/hwc3/ClientFrameComposer.cpp
-@@ -19,10 +19,13 @@
+@@ -19,10 +19,15 @@
  #include <android-base/parseint.h>
  #include <android-base/properties.h>
  #include <android-base/strings.h>
++#include <cerrno>
 +#include <cstdio>
  #include <android/hardware/graphics/common/1.0/types.h>
  #include <drm_fourcc.h>
  #include <libyuv.h>
  #include <sync/sync.h>
 +#include <fcntl.h>
++#include <sys/mman.h>
 +#include <unistd.h>
  #include <ui/GraphicBuffer.h>
  #include <ui/GraphicBufferAllocator.h>
  #include <ui/GraphicBufferMapper.h>
-@@ -81,6 +84,7 @@ HWC3::Error ClientFrameComposer::onDisplayDestroy(Display* display) {
+@@ -81,6 +86,7 @@ HWC3::Error ClientFrameComposer::onDisplayDestroy(Display* display) {
  
  HWC3::Error ClientFrameComposer::onDisplayClientTargetSet(Display* display) {
      const auto displayId = display->getId();
@@ -686,7 +725,7 @@ index 10c6ce89..3e1e94bc 100644
      DEBUG_LOG("%s display:%" PRIu64, __FUNCTION__, displayId);
  
      auto it = mDisplayInfos.find(displayId);
-@@ -93,12 +97,16 @@ HWC3::Error ClientFrameComposer::onDisplayClientTargetSet(Display* display) {
+@@ -93,12 +99,16 @@ HWC3::Error ClientFrameComposer::onDisplayClientTargetSet(Display* display) {
  
      auto [drmBufferCreateError, drmBuffer] =
          mDrmClient.create(display->getClientTarget().getBuffer());
@@ -703,7 +742,7 @@ index 10c6ce89..3e1e94bc 100644
  
      return HWC3::Error::None;
  }
-@@ -130,6 +138,7 @@ HWC3::Error ClientFrameComposer::presentDisplay(
+@@ -130,6 +140,7 @@ HWC3::Error ClientFrameComposer::presentDisplay(
      Display* display, ::android::base::unique_fd* outDisplayFence,
      std::unordered_map<int64_t, ::android::base::unique_fd>* /*outLayerFences*/) {
      const auto displayId = display->getId();
@@ -711,7 +750,7 @@ index 10c6ce89..3e1e94bc 100644
      DEBUG_LOG("%s display:%" PRIu64, __FUNCTION__, displayId);
  
      auto displayInfoIt = mDisplayInfos.find(displayId);
-@@ -140,6 +149,8 @@ HWC3::Error ClientFrameComposer::presentDisplay(
+@@ -140,6 +151,8 @@ HWC3::Error ClientFrameComposer::presentDisplay(
  
      DisplayInfo& displayInfo = displayInfoIt->second;
      if (!displayInfo.clientTargetDrmBuffer) {
@@ -720,13 +759,49 @@ index 10c6ce89..3e1e94bc 100644
          ALOGW("%s: display:%" PRIu64 " no client target set, nothing to present.", __FUNCTION__,
                displayId);
          return HWC3::Error::None;
-@@ -149,6 +160,9 @@ HWC3::Error ClientFrameComposer::presentDisplay(
+@@ -149,6 +162,45 @@ HWC3::Error ClientFrameComposer::presentDisplay(
  
      auto [flushError, flushCompleteFence] = mDrmClient.flushToDisplay(
          static_cast<uint32_t>(displayId), displayInfo.clientTargetDrmBuffer, fence);
 +    fprintf(stderr, "WINQ-PRESENT flush %d\\n", static_cast<int>(flushError)); fflush(stderr);
 +    ALOGE("WINQ-PRESENT flush display=%" PRIu64 " error=%d", displayId,
 +          static_cast<int>(flushError));
++    static unsigned sampleCount = 0;
++    if (++sampleCount % 60 == 0) {
++        const native_handle_t* target = display->getClientTarget().getBuffer();
++        if (target && target->numFds > 0) {
++            const int fd = target->data[0];
++            const off_t size = lseek(fd, 0, SEEK_END);
++            lseek(fd, 0, SEEK_SET);
++            if (size >= 4) {
++                void* mapped = mmap(nullptr, static_cast<size_t>(size), PROT_READ, MAP_SHARED,
++                                    fd, 0);
++                if (mapped != MAP_FAILED) {
++                    const auto* bytes = static_cast<const uint8_t*>(mapped);
++                    const size_t middle = static_cast<size_t>(size) / 2 & ~size_t{3};
++                    uint64_t brightPixels = 0;
++                    uint64_t greenPixels = 0;
++                    for (size_t i = 0; i + 3 < static_cast<size_t>(size); i += 4) {
++                        const uint8_t red = bytes[i];
++                        const uint8_t green = bytes[i + 1];
++                        const uint8_t blue = bytes[i + 2];
++                        if (red > 200 && green > 200 && blue > 200) ++brightPixels;
++                        if (green > 220 && red < 100 && blue < 100) ++greenPixels;
++                    }
++                    fprintf(stderr,
++                            "KIKI-SCANOUT-SAMPLE size=%jd first=%02x%02x%02x%02x middle=%02x%02x%02x%02x bright=%" PRIu64 " green=%" PRIu64 "\\n",
++                            static_cast<intmax_t>(size), bytes[0], bytes[1], bytes[2], bytes[3],
++                            bytes[middle], bytes[middle + 1], bytes[middle + 2], bytes[middle + 3],
++                            brightPixels, greenPixels);
++                    fflush(stderr);
++                    munmap(mapped, static_cast<size_t>(size));
++                } else {
++                    fprintf(stderr, "KIKI-SCANOUT-SAMPLE mmap-failed errno=%d\\n", errno);
++                    fflush(stderr);
++                }
++            }
++        }
++    }
      if (flushError != HWC3::Error::None) {
          ALOGE("%s: display:%" PRIu64 " failed to flush drm buffer" PRIu64, __FUNCTION__, displayId);
      }
@@ -933,7 +1008,7 @@ index 8083b45d..c47f9059 100644
  
      ::android::hardware::graphics::composer::V2_1::Display display = toHwc2Display(displayId);
 diff --git a/device/generic/goldfish/hals/hwc3/Device.cpp b/device/generic/goldfish/hals/hwc3/Device.cpp
-index 2f03f6ab..f2e2635d 100644
+index 2f03f6ab..cf5896e9 100644
 --- a/device/generic/goldfish/hals/hwc3/Device.cpp
 +++ b/device/generic/goldfish/hals/hwc3/Device.cpp
 @@ -19,6 +19,7 @@
@@ -956,10 +1031,11 @@ index 2f03f6ab..f2e2635d 100644
  }
  
  std::string getPmemPath() { return ::android::base::GetProperty("ro.vendor.hwcomposer.pmem", ""); }
-@@ -89,19 +93,12 @@ HWC3::Error Device::getComposer(FrameComposer** outComposer) {
+@@ -88,20 +92,28 @@ HWC3::Error savePersistentKeyValues(const Json::Value& dictionary) {
+ HWC3::Error Device::getComposer(FrameComposer** outComposer) {
      std::unique_lock<std::mutex> lock(mMutex);
  
-     if (mComposer == nullptr) {
+-    if (mComposer == nullptr) {
 -        if (IsInNoOpCompositionMode()) {
 -            DEBUG_LOG("%s: using NoOpFrameComposer", __FUNCTION__);
 -            mComposer = std::make_unique<NoOpFrameComposer>();
@@ -972,7 +1048,22 @@ index 2f03f6ab..f2e2635d 100644
 -        } else {
 -            DEBUG_LOG("%s: using HostFrameComposer", __FUNCTION__);
 -            mComposer = std::make_unique<HostFrameComposer>();
--        }
++    if (mComposer == nullptr &&
++        ::android::base::GetProperty("ro.vendor.hwcomposer.mode", "") == "guest") {
++        DEBUG_LOG("%s: using Kiki GuestFrameComposer", __FUNCTION__);
++        mComposer = std::make_unique<GuestFrameComposer>();
++        if (!mComposer) {
++            ALOGE("%s failed to allocate GuestFrameComposer", __FUNCTION__);
++            return HWC3::Error::NoResources;
+         }
++        HWC3::Error error = mComposer->init();
++        if (error != HWC3::Error::None) {
++            ALOGE("%s failed to init GuestFrameComposer", __FUNCTION__);
++            return error;
++        }
++    }
++
++    if (mComposer == nullptr) {
 +        // KikiAOSP minimal product: always use the DRM client composer. The
 +        // host/guest composers can acknowledge present without programming
 +        // the virtio-gpu scanout on this intentionally 2D backend.
@@ -1263,19 +1354,270 @@ index a7b67299..96ac8c08 100644
  
      if (mStatus == DRM_MODE_CONNECTED) {
          std::optional<EdidInfo> maybeEdidInfo = loadEdid(drmFd);
+diff --git a/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp b/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp
+index ed1fa68c..ab84e484 100644
+--- a/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp
++++ b/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp
+@@ -18,6 +18,10 @@
+ 
+ #include "DrmAtomicRequest.h"
+ 
++#include <android-base/properties.h>
++
++#include <cerrno>
++
+ namespace aidl::android::hardware::graphics::composer3::impl {
+ namespace {
+ 
+@@ -103,6 +107,32 @@ std::tuple<HWC3::Error, ::android::base::unique_fd> DrmDisplay::flush(
+         return std::make_tuple(HWC3::Error::NoResources, ::android::base::unique_fd());
+     }
+ 
++    // Some 2D virtio-gpu hosts accept the atomic plane update without
++    // notifying the window scanout listener. Re-submit the active CRTC and
++    // mark the same real SurfaceFlinger framebuffer fully dirty when this
++    // device diagnostic is enabled; this does not synthesize or alter pixels.
++    if (::android::base::GetBoolProperty("ro.kikiaosp.drm_legacy_present", false)) {
++        drmModeCrtcPtr crtc = drmModeGetCrtc(drmFd.get(), mCrtc->getId());
++        if (crtc && crtc->mode_valid) {
++            uint32_t connectorId = mConnector->getId();
++            const int setResult = drmModeSetCrtc(drmFd.get(), mCrtc->getId(),
++                                                 *buffer->mDrmFramebuffer, 0, 0,
++                                                 &connectorId, 1, &crtc->mode);
++            ALOGI("KikiAOSP: legacy client-target modeset result=%d errno=%d fb=%u",
++                 setResult, errno, *buffer->mDrmFramebuffer);
++            if (setResult == 0) {
++                errno = 0;
++                const int dirtyResult = drmModeDirtyFB(
++                        drmFd.get(), *buffer->mDrmFramebuffer, nullptr, 0);
++                ALOGI("KikiAOSP: client-target full-frame dirtyfb result=%d errno=%d fb=%u",
++                     dirtyResult, errno, *buffer->mDrmFramebuffer);
++            }
++        } else {
++            ALOGE("KikiAOSP: legacy client-target modeset has no active CRTC mode");
++        }
++        if (crtc) drmModeFreeCrtc(crtc);
++    }
++
+     mPreviousBuffer = buffer;
+ 
+     DEBUG_LOG("%s: submitted atomic update, flush fence:%d\n", __FUNCTION__, flushFenceFd);
 diff --git a/device/generic/goldfish/hals/hwc3/GuestFrameComposer.cpp b/device/generic/goldfish/hals/hwc3/GuestFrameComposer.cpp
-index 6bfe0765..0a498f85 100644
+index 6bfe0765..19905ded 100644
 --- a/device/generic/goldfish/hals/hwc3/GuestFrameComposer.cpp
 +++ b/device/generic/goldfish/hals/hwc3/GuestFrameComposer.cpp
-@@ -23,6 +23,8 @@
+@@ -20,9 +20,17 @@
+ #include <android-base/properties.h>
+ #include <android-base/strings.h>
+ #include <android/hardware/graphics/common/1.0/types.h>
++#include <cros_gralloc_handle.h>
  #include <drm_fourcc.h>
++#include <linux/dma-buf.h>
  #include <libyuv.h>
  #include <sync/sync.h>
++#include <sys/ioctl.h>
++#include <sys/mman.h>
++#include <cerrno>
++#include <cstring>
 +#include <fcntl.h>
 +#include <unistd.h>
  #include <ui/GraphicBuffer.h>
  #include <ui/GraphicBufferAllocator.h>
  #include <ui/GraphicBufferMapper.h>
+@@ -35,6 +43,69 @@
+ namespace aidl::android::hardware::graphics::composer3::impl {
+ namespace {
+ 
++class ScopedDmaBufMapping {
++   public:
++    ~ScopedDmaBufMapping() { Finish(); }
++
++    bool Map(int fd, size_t size, bool write = true) {
++        if (fd < 0 || size == 0) {
++            ALOGE("%s: invalid dma-buf fd:%d size:%zu", __FUNCTION__, fd, size);
++            return false;
++        }
++
++        mFd = fd;
++        mSize = size;
++
++        mSyncFlags = write ? DMA_BUF_SYNC_RW : DMA_BUF_SYNC_READ;
++        struct dma_buf_sync sync = {};
++        sync.flags = static_cast<decltype(sync.flags)>(DMA_BUF_SYNC_START | mSyncFlags);
++        if (ioctl(mFd, DMA_BUF_IOCTL_SYNC, &sync) == 0) {
++            mSyncStarted = true;
++        } else {
++            ALOGW("%s: dma-buf CPU sync start failed: %s; trying mmap", __FUNCTION__,
++                  strerror(errno));
++        }
++
++        const int protection = PROT_READ | (write ? PROT_WRITE : 0);
++        mData = mmap(nullptr, mSize, protection, MAP_SHARED, mFd, 0);
++        if (mData == MAP_FAILED) {
++            const int error = errno;
++            mData = nullptr;
++            Finish();
++            ALOGE("%s: dma-buf mmap failed: %s", __FUNCTION__, strerror(error));
++            return false;
++        }
++        return true;
++    }
++
++    uint8_t* Get() const { return static_cast<uint8_t*>(mData); }
++
++    void Finish() {
++        if (mSyncStarted) {
++            struct dma_buf_sync sync = {};
++            sync.flags = static_cast<decltype(sync.flags)>(DMA_BUF_SYNC_END | mSyncFlags);
++            if (ioctl(mFd, DMA_BUF_IOCTL_SYNC, &sync) != 0) {
++                ALOGW("%s: dma-buf CPU sync end failed: %s", __FUNCTION__, strerror(errno));
++            }
++            mSyncStarted = false;
++        }
++        if (mData != nullptr) {
++            munmap(mData, mSize);
++            mData = nullptr;
++        }
++        mSize = 0;
++        mFd = -1;
++        mSyncFlags = 0;
++    }
++
++   private:
++    int mFd = -1;
++    size_t mSize = 0;
++    void* mData = nullptr;
++    bool mSyncStarted = false;
++    uint64_t mSyncFlags = 0;
++};
++
+ // Returns a color matrix that can be used with libyuv by converting values
+ // in -1 to 1 into -64 to 64 and converting row-major to column-major by transposing.
+ std::array<std::int8_t, 16> ToLibyuvColorMatrix(const std::array<float, 16>& in) {
+@@ -772,23 +843,33 @@ HWC3::Error GuestFrameComposer::presentDisplay(
+ 
+     std::optional<GrallocBufferView> compositionResultBufferViewOpt =
+         compositionResultBufferOpt->Lock();
+-    if (!compositionResultBufferViewOpt) {
+-        ALOGE("%s: display:%" PRIu32 " failed to get buffer view", __FUNCTION__, displayId);
+-        return HWC3::Error::NoResources;
++    ScopedDmaBufMapping compositionResultBufferMapping;
++    uint8_t* compositionResultBufferData = nullptr;
++    if (compositionResultBufferViewOpt) {
++        const std::optional<void*> compositionResultBufferDataOpt =
++            compositionResultBufferViewOpt->Get();
++        if (compositionResultBufferDataOpt) {
++            compositionResultBufferData =
++                reinterpret_cast<uint8_t*>(*compositionResultBufferDataOpt);
++        }
+     }
+-
+-    const std::optional<void*> compositionResultBufferDataOpt =
+-        compositionResultBufferViewOpt->Get();
+-    if (!compositionResultBufferDataOpt) {
+-        ALOGE("%s: display:%" PRIu32 " failed to get buffer data", __FUNCTION__, displayId);
+-        return HWC3::Error::NoResources;
++    if (compositionResultBufferData == nullptr) {
++        const auto* handle = reinterpret_cast<cros_gralloc_handle_t>(compositionResult->getBuffer());
++        if (handle == nullptr || handle->num_planes == 0 || handle->fds[0] < 0 ||
++            handle->sizes[0] == 0 ||
++            !compositionResultBufferMapping.Map(handle->fds[0], handle->sizes[0])) {
++            ALOGE("%s: display:%" PRIu32 " failed to map composition buffer", __FUNCTION__,
++                  displayId);
++            return HWC3::Error::NoResources;
++        }
++        compositionResultBufferData = compositionResultBufferMapping.Get();
++        ALOGI("KikiAOSP: mapped composition dma-buf fd=%d size=%u", handle->fds[0],
++              handle->sizes[0]);
+     }
+ 
+     uint32_t compositionResultBufferWidth = *compositionResultBufferWidthOpt;
+     uint32_t compositionResultBufferHeight = *compositionResultBufferHeightOpt;
+     uint32_t compositionResultBufferStride = *compositionResultBufferStrideOpt;
+-    uint8_t* compositionResultBufferData =
+-        reinterpret_cast<uint8_t*>(*compositionResultBufferDataOpt);
+ 
+     const std::vector<Layer*>& layers = display->getOrderedLayers();
+ 
+@@ -876,6 +957,8 @@ HWC3::Error GuestFrameComposer::presentDisplay(
+         }
+     }
+ 
++    compositionResultBufferMapping.Finish();
++
+     DEBUG_LOG("%s display:%" PRIu32 " flushing drm buffer", __FUNCTION__, displayId);
+ 
+     auto [error, fence] =
+@@ -956,6 +1039,7 @@ HWC3::Error GuestFrameComposer::composeLayerInto(
+ 
+     std::optional<GrallocBuffer> srcBufferOpt;
+     std::optional<GrallocBufferView> srcBufferViewOpt;
++    ScopedDmaBufMapping srcBufferMapping;
+ 
+     const auto srcLayerCompositionType = srcLayer->getCompositionType();
+     if (srcLayerCompositionType == Composition::DEVICE) {
+@@ -966,19 +1050,51 @@ HWC3::Error GuestFrameComposer::composeLayerInto(
+         }
+         GrallocBuffer& srcBuffer = *srcBufferOpt;
+ 
++        bool haveSourceSpec = false;
+         srcBufferViewOpt = srcBuffer.Lock();
+-        if (!srcBufferViewOpt) {
+-            ALOGE("%s: failed to lock import layer buffer.", __FUNCTION__);
+-            return HWC3::Error::NoResources;
++        if (srcBufferViewOpt) {
++            GrallocBufferView& srcBufferView = *srcBufferViewOpt;
++            auto srcLayerSpecOpt = GetBufferSpec(srcBuffer, srcBufferView, srcLayerCrop);
++            if (srcLayerSpecOpt) {
++                srcLayerSpec = *srcLayerSpecOpt;
++                haveSourceSpec = true;
++            } else {
++                ALOGE("%s: failed to describe locked layer buffer.", __FUNCTION__);
++                return HWC3::Error::NoResources;
++            }
+         }
+-        GrallocBufferView& srcBufferView = *srcBufferViewOpt;
+-
+-        auto srcLayerSpecOpt = GetBufferSpec(srcBuffer, srcBufferView, srcLayerCrop);
+-        if (!srcLayerSpecOpt) {
+-            return HWC3::Error::NoResources;
++        if (!haveSourceSpec) {
++            const auto* handle = reinterpret_cast<cros_gralloc_handle_t>(srcLayer->waitAndGetBuffer());
++            const auto format = srcBuffer.GetDrmFormat();
++            const auto width = srcBuffer.GetWidth();
++            const auto height = srcBuffer.GetHeight();
++            const auto stride = srcBuffer.GetMonoPlanarStrideBytes();
++            if (handle == nullptr || handle->num_planes != 1 || handle->fds[0] < 0 ||
++                handle->sizes[0] == 0 || !format || !width || !height || !stride ||
++                (*format != DRM_FORMAT_ABGR8888 && *format != DRM_FORMAT_XBGR8888) ||
++                handle->format_modifier != DRM_FORMAT_MOD_LINEAR ||
++                srcLayerCrop.left < 0 || srcLayerCrop.top < 0 ||
++                srcLayerCrop.right <= srcLayerCrop.left ||
++                srcLayerCrop.bottom <= srcLayerCrop.top ||
++                srcLayerCrop.right > static_cast<int32_t>(*width) ||
++                srcLayerCrop.bottom > static_cast<int32_t>(*height) ||
++                !srcBufferMapping.Map(handle->fds[0],
++                                      static_cast<size_t>(handle->offsets[0]) + handle->sizes[0],
++                                      false)) {
++                ALOGE("%s: cannot map unsupported layer buffer via dma-buf", __FUNCTION__);
++                return HWC3::Error::NoResources;
++            }
++            auto* source = srcBufferMapping.Get() + handle->offsets[0];
++            srcLayerSpec = BufferSpec(
++                source, std::nullopt, *width, *height,
++                static_cast<uint32_t>(srcLayerCrop.left),
++                static_cast<uint32_t>(srcLayerCrop.top),
++                static_cast<uint32_t>(srcLayerCrop.right - srcLayerCrop.left),
++                static_cast<uint32_t>(srcLayerCrop.bottom - srcLayerCrop.top),
++                *format, *stride, GetDrmFormatBytesPerPixel(*format));
++            ALOGI("KikiAOSP: mapped DEVICE dma-buf fd=%d size=%u format=%u %ux%u stride=%u",
++                  handle->fds[0], handle->sizes[0], *format, *width, *height, *stride);
+         }
+-
+-        srcLayerSpec = *srcLayerSpecOpt;
+     } else if (srcLayerCompositionType == Composition::SOLID_COLOR) {
+         // srcLayerSpec not used by `needsFill` below.
+     }
 diff --git a/device/generic/goldfish/hals/hwc3/NoOpFrameComposer.cpp b/device/generic/goldfish/hals/hwc3/NoOpFrameComposer.cpp
 index b665d99b..2dfccb14 100644
 --- a/device/generic/goldfish/hals/hwc3/NoOpFrameComposer.cpp
@@ -1371,7 +1713,6 @@ index 4dc91afe..9bf6b52f 100644
      override
      class hal animation
      user system
-
 diff --git a/device/google/cuttlefish/guest/hals/gralloc/Android.bp b/device/google/cuttlefish/guest/hals/gralloc/Android.bp
 index eb58bae18..c0a89e176 100644
 --- a/device/google/cuttlefish/guest/hals/gralloc/Android.bp
@@ -1402,7 +1743,6 @@ index df715abf2..04fd9ad38 100644
      class early_hal
      user nobody
      # The keymint service is not allowed to restart.
-
 diff --git a/external/boringssl/selftest/boringssl_self_test.rc b/external/boringssl/selftest/boringssl_self_test.rc
 index 2f20f802..b886a426 100644
 --- a/external/boringssl/selftest/boringssl_self_test.rc
@@ -1418,7 +1758,6 @@ index 2f20f802..b886a426 100644
      stdio_to_kmsg
      user root
  
-
 diff --git a/external/mesa3d/src/gfxstream/guest/android/GfxStreamGralloc.cpp b/external/mesa3d/src/gfxstream/guest/android/GfxStreamGralloc.cpp
 index 1a70a9da5b9..25b6b83b692 100644
 --- a/external/mesa3d/src/gfxstream/guest/android/GfxStreamGralloc.cpp
@@ -1472,7 +1811,6 @@ index 46ffe4dcac8..543bb29833c 100644
      return resource->getResourceHandle();
  }
  
-
 diff --git a/external/minigbm/cros_gralloc/aidl/Allocator.cpp b/external/minigbm/cros_gralloc/aidl/Allocator.cpp
 index 1500892..20c9ef2 100644
 --- a/external/minigbm/cros_gralloc/aidl/Allocator.cpp
@@ -1613,6 +1951,20 @@ index 150d427..8a3e845 100644
      ABinderProcess_setThreadPoolMaxThreadCount(4);
      ABinderProcess_startThreadPool();
      ABinderProcess_joinThreadPool();
+diff --git a/external/minigbm/cros_gralloc/aidl/allocator.rc b/external/minigbm/cros_gralloc/aidl/allocator.rc
+index 24a7c45..d354c66 100644
+--- a/external/minigbm/cros_gralloc/aidl/allocator.rc
++++ b/external/minigbm/cros_gralloc/aidl/allocator.rc
+@@ -2,6 +2,7 @@ service vendor.graphics.allocator /vendor/bin/hw/android.hardware.graphics.alloc
+     class hal animation
+     user system
+     group graphics drmrpc
++    setenv KIKI_ALLOCATOR 1
+     capabilities SYS_NICE
+     onrestart restart surfaceflinger
+-    task_profiles ServiceCapacityLow
+\ No newline at end of file
++    task_profiles ServiceCapacityLow
 diff --git a/external/minigbm/cros_gralloc/cros_gralloc_driver.cc b/external/minigbm/cros_gralloc/cros_gralloc_driver.cc
 index 706dee9..a5d2708 100644
 --- a/external/minigbm/cros_gralloc/cros_gralloc_driver.cc
@@ -1766,7 +2118,231 @@ index 401c177..2233d32 100644
      shared_libs: [
          "android.hardware.graphics.allocator-V2-ndk",
          "libminigbm_gralloc",
-
+diff --git a/external/minigbm/virtgpu_virgl.c b/external/minigbm/virtgpu_virgl.c
+index 92f8c78..a66c383 100644
+--- a/external/minigbm/virtgpu_virgl.c
++++ b/external/minigbm/virtgpu_virgl.c
+@@ -1018,16 +1018,36 @@ static int virgl_bo_destroy(struct bo *bo)
+ {
+ 	if (params[param_3d].value)
+ 		return drv_gem_bo_destroy(bo);
+-	else
+-		return drv_dumb_bo_destroy(bo);
++
++	/* A PRIME-imported virtio-gpu handle is a GEM handle, but it is not a
++	 * locally created dumb buffer. QEMU rejects DESTROY_DUMB for it. */
++	if (!drv_dumb_bo_destroy(bo))
++		return 0;
++	return drv_gem_bo_destroy(bo);
+ }
+ 
+ static void *virgl_bo_map(struct bo *bo, struct vma *vma, uint32_t map_flags)
+ {
+ 	if (params[param_3d].value)
+ 		return virgl_3d_bo_map(bo, vma, map_flags);
+-	else
+-		return drv_dumb_bo_map(bo, vma, map_flags);
++
++	void *addr = drv_dumb_bo_map(bo, vma, map_flags);
++	if (addr != MAP_FAILED)
++		return addr;
++
++	/* Imported client buffers can be shared as dma-bufs even when
++	 * MODE_MAP_DUMB rejects their GEM handle. Map the same backing memory
++	 * through PRIME so software Android windows remain CPU-accessible. */
++	int fd = -1;
++	if (drmPrimeHandleToFD(bo->drv->fd, bo->handle.u32,
++				 DRM_CLOEXEC | DRM_RDWR, &fd) != 0)
++		return MAP_FAILED;
++	vma->length = bo->meta.total_size;
++	addr = mmap(NULL, vma->length, drv_get_prot(map_flags), MAP_SHARED, fd, 0);
++	close(fd);
++	if (addr == MAP_FAILED)
++		drv_loge("PRIME dma-buf mmap failed: %s\n", strerror(errno));
++	return addr;
+ }
+ 
+ static bool is_arc_screen_capture_bo(struct bo *bo)
+diff --git a/external/selinux/libselinux/src/avc.c b/external/selinux/libselinux/src/avc.c
+index 7af5d192..7f0ce916 100644
+--- a/external/selinux/libselinux/src/avc.c
++++ b/external/selinux/libselinux/src/avc.c
+@@ -12,6 +12,7 @@
+ #include <assert.h>
+ #include "avc_sidtab.h"
+ #include "avc_internal.h"
++#include "policy.h"
+ 
+ #define AVC_CACHE_SLOTS		512
+ #define AVC_CACHE_MAXNODES	410
+@@ -696,6 +697,7 @@ void avc_audit(security_id_t ssid, security_id_t tsid,
+ 	       struct av_decision *avd, int result, void *a)
+ {
+ 	access_vector_t denied, audited;
++	static int kiki_diag_logged;
+ 
+ 	denied = requested & ~avd->allowed;
+ 	if (denied)
+@@ -726,6 +728,12 @@ void avc_audit(security_id_t ssid, security_id_t tsid,
+ 
+ 	if (denied)
+ 		log_append(avc_audit_buf, " permissive=%u", result ? 0 : 1);
++	if (denied && result && __sync_bool_compare_and_swap(&kiki_diag_logged, 0, 1)) {
++		avc_log(SELINUX_ERROR,
++			"KIKI-SELINUX-DIAG decision class=%s enforcing=%d result=%d requested=0x%08x allowed=0x%08x",
++			security_class_to_string(tclass), avc_enforcing, result,
++			requested, avd->allowed);
++	}
+ 
+ 	avc_log(SELINUX_AVC, "%s", avc_audit_buf);
+ 
+@@ -751,6 +759,7 @@ int avc_has_perm_noaudit(security_id_t ssid,
+ {
+ 	struct avc_entry *ae;
+ 	int rc = 0;
++	static int kiki_query_error_logged;
+ 	struct avc_entry entry;
+ 	access_vector_t denied;
+ 	struct avc_entry_ref ref;
+@@ -794,9 +803,14 @@ int avc_has_perm_noaudit(security_id_t ssid,
+ 				rc = errno = 0;
+ 				goto out;
+ 			}
++			if (rc && !avc_enforcing && __sync_bool_compare_and_swap(&kiki_query_error_logged, 0, 1))
++				avc_log(SELINUX_ERROR, "KIKI-SELINUX-DIAG access-query rc=%d errno=%d selinux_mnt=%s",
++					rc, errno, selinux_mnt ? selinux_mnt : "(null)");
+ 			if (rc)
+ 				goto out;
+ 			rc = avc_insert(ssid, tsid, tclass, &entry, aeref);
++			if (rc && !avc_enforcing && __sync_bool_compare_and_swap(&kiki_query_error_logged, 0, 1))
++				avc_log(SELINUX_ERROR, "KIKI-SELINUX-DIAG cache-insert rc=%d errno=%d", rc, errno);
+ 			if (rc)
+ 				goto out;
+ 		}
+diff --git a/external/selinux/libselinux/src/checkAccess.c b/external/selinux/libselinux/src/checkAccess.c
+index 022cd6b5..2c08cf15 100644
+--- a/external/selinux/libselinux/src/checkAccess.c
++++ b/external/selinux/libselinux/src/checkAccess.c
+@@ -16,6 +16,9 @@ static void avc_init_once(void)
+ 	if (selinux_enabled == 1) {
+ 		if (avc_open(NULL, 0))
+ 			return;
++		avc_log(SELINUX_INFO,
++			"KIKI-SELINUX-DIAG userspace avc enforcing=%d kernel=%d",
++			avc_enforcing, security_getenforce());
+ 	}
+ }
+ 
+diff --git a/external/selinux/libselinux/src/compute_av.c b/external/selinux/libselinux/src/compute_av.c
+index 354a19e1..26a7e031 100644
+--- a/external/selinux/libselinux/src/compute_av.c
++++ b/external/selinux/libselinux/src/compute_av.c
+@@ -6,10 +6,24 @@
+ #include <errno.h>
+ #include <string.h>
+ #include <limits.h>
++#include <sys/vfs.h>
+ #include "selinux_internal.h"
++#include "callbacks.h"
+ #include "policy.h"
+ #include "mapping.h"
+ 
++static int kiki_compute_av_stage_logged;
++
++static void log_kiki_compute_av_stage(const char *stage, int rc, int error,
++				      const char *path, const char *reply)
++{
++	if (!__sync_bool_compare_and_swap(&kiki_compute_av_stage_logged, 0, 1))
++		return;
++	selinux_log(SELINUX_ERROR,
++		"KIKI-SELINUX-STAGE stage=%s rc=%d errno=%d path=%s reply='%.96s'\n",
++		stage, rc, error, path ? path : "(null)", reply ? reply : "");
++}
++
+ int security_compute_av_flags_raw(const char * scon,
+ 				  const char * tcon,
+ 				  security_class_t tclass,
+@@ -23,18 +37,46 @@ int security_compute_av_flags_raw(const char * scon,
+ 	security_class_t kclass;
+ 
+ 	if (!selinux_mnt) {
++		log_kiki_compute_av_stage("mount-pointer", -1, ENOENT, NULL, NULL);
+ 		errno = ENOENT;
+ 		return -1;
+ 	}
+ 
+ 	snprintf(path, sizeof path, "%s/access", selinux_mnt);
+ 	fd = open(path, O_RDWR | O_CLOEXEC);
+-	if (fd < 0)
++	if (fd < 0) {
++		log_kiki_compute_av_stage("open", fd, errno, path, NULL);
++		{
++			char mount_namespace[128] = "(unavailable)";
++			ssize_t mount_namespace_len = readlink("/proc/thread-self/ns/mnt",
++							       mount_namespace, sizeof(mount_namespace) - 1);
++			if (mount_namespace_len >= 0)
++				mount_namespace[mount_namespace_len] = '\0';
++			selinux_log(SELINUX_ERROR,
++				"KIKI-SELINUX-STAGE failure-thread pid=%d mount_ns=%s\n",
++				getpid(), mount_namespace);
++		}
++		{
++			struct statfs mount_stat;
++			int mount_stat_rc = statfs(selinux_mnt, &mount_stat);
++			int mount_stat_errno = mount_stat_rc < 0 ? errno : 0;
++			if (mount_stat_rc == 0)
++				selinux_log(SELINUX_ERROR,
++					"KIKI-SELINUX-STAGE selinuxfs f_type=0x%llx expected=0x%x path=%s\n",
++					(unsigned long long)mount_stat.f_type,
++					(unsigned int)SELINUX_MAGIC, selinux_mnt);
++			else
++				selinux_log(SELINUX_ERROR,
++					"KIKI-SELINUX-STAGE selinuxfs statfs_rc=%d errno=%d path=%s\n",
++					mount_stat_rc, mount_stat_errno, selinux_mnt);
++		}
+ 		return -1;
++	}
+ 
+ 	len = selinux_page_size;
+ 	buf = malloc(len);
+ 	if (!buf) {
++		log_kiki_compute_av_stage("malloc", -1, errno, path, NULL);
+ 		ret = -1;
+ 		goto out;
+ 	}
+@@ -45,24 +87,30 @@ int security_compute_av_flags_raw(const char * scon,
+ 		 kclass, unmap_perm(tclass, requested));
+ 	if (ret < 0 || (size_t)ret >= len) {
+ 		errno = EOVERFLOW;
++		log_kiki_compute_av_stage("format", -1, errno, path, NULL);
+ 		ret = -1;
+ 		goto out2;
+ 	}
+ 
+ 	ret = write(fd, buf, strlen(buf));
+-	if (ret < 0)
++	if (ret < 0) {
++		log_kiki_compute_av_stage("write", ret, errno, path, NULL);
+ 		goto out2;
++	}
+ 
+ 	memset(buf, 0, len);
+ 	ret = read(fd, buf, len - 1);
+-	if (ret < 0)
++	if (ret < 0) {
++		log_kiki_compute_av_stage("read", ret, errno, path, NULL);
+ 		goto out2;
++	}
+ 
+ 	ret = sscanf(buf, "%x %x %x %x %u %x",
+ 		     &avd->allowed, &avd->decided,
+ 		     &avd->auditallow, &avd->auditdeny,
+ 		     &avd->seqno, &avd->flags);
+ 	if (ret < 5) {
++		log_kiki_compute_av_stage("parse", ret, errno, path, buf);
+ 		ret = -1;
+ 		goto out2;
+ 	} else if (ret < 6)
 diff --git a/external/skia/src/gpu/ganesh/gl/egl/GrGLMakeEGLInterface.cpp b/external/skia/src/gpu/ganesh/gl/egl/GrGLMakeEGLInterface.cpp
 index 2339698437..c18176798a 100644
 --- a/external/skia/src/gpu/ganesh/gl/egl/GrGLMakeEGLInterface.cpp
@@ -1797,7 +2373,6 @@ index 2339698437..c18176798a 100644
      #define M(X) if (0 == strcmp(#X, name)) { return (GrGLFuncPtr) X; }
      GR_GL_CORE_FUNCTIONS_EACH(M)
      #undef M
-
 diff --git a/frameworks/av/media/libstagefright/renderfright/gl/GLESRenderEngine.cpp b/frameworks/av/media/libstagefright/renderfright/gl/GLESRenderEngine.cpp
 index 04da9a50b8..8b947d2fc2 100644
 --- a/frameworks/av/media/libstagefright/renderfright/gl/GLESRenderEngine.cpp
@@ -1810,9 +2385,8 @@ index 04da9a50b8..8b947d2fc2 100644
  
      if (!configs.empty()) {
          if (attribute != EGL_NONE) {
-
 diff --git a/frameworks/base/cmds/app_process/app_main.cpp b/frameworks/base/cmds/app_process/app_main.cpp
-index 4e41f2c1ac35..075c2bde8f98 100644
+index 4e41f2c1ac35..76aabfccda65 100644
 --- a/frameworks/base/cmds/app_process/app_main.cpp
 +++ b/frameworks/base/cmds/app_process/app_main.cpp
 @@ -9,6 +9,7 @@
@@ -1849,16 +2423,15 @@ index 4e41f2c1ac35..075c2bde8f98 100644
  static void app_usage()
  {
      fprintf(stderr,
-@@ -183,6 +203,8 @@ int main(int argc, char* const argv[])
+@@ -183,6 +203,7 @@ int main(int argc, char* const argv[])
      }
  
      AppRuntime runtime(argv[0], computeArgBlockSize(argc, argv));
 +    runtime.addOption("-Xforcejitzygote"); // Kiki bring-up: force current zygote methods through JIT
-+    runtime.addOption("-Xbootclasspath:/system/framework/kiki-core-oj.jar:/system/framework/kiki-core-libart.jar:/system/framework/kiki-okhttp.jar:/system/framework/kiki-bouncycastle.jar:/system/framework/kiki-apache-xml.jar:/system/framework/kiki-core-icu4j.jar:/system/framework/kiki-conscrypt.jar:/system/framework/framework.jar:/system/framework/framework-graphics.jar:/system/framework/framework-location.jar:/system/framework/ext.jar:/system/framework/telephony-common.jar:/system/framework/voip-common.jar:/system/framework/ims-common.jar:/system/framework/framework-ondeviceintelligence-platform.jar:/system/framework/framework-configinfrastructure.jar:/system/framework/framework-permission.jar:/system/framework/framework-permission-s.jar:/system/framework/framework-connectivity.jar:/system/framework/framework-connectivity-t.jar:/system/framework/framework-statsd.jar:/system/framework/framework-telecom.jar:/system/framework/framework-telephony.jar:/system/framework/framework-wifi.jar:/system/framework/framework-bluetooth.jar:/system/framework/framework-appsearch.jar:/system/framework/framework-adservices.jar:/system/framework/framework-sdksandbox.jar:/system/framework/framework-crashrecovery.jar:/system/framework/framework-mediaprovider.jar"); 
      // Process command line arguments
      // ignore argv[0]
      argc--;
-@@ -333,7 +355,10 @@ int main(int argc, char* const argv[])
+@@ -333,7 +354,10 @@ int main(int argc, char* const argv[])
      }
  
      if (zygote) {
@@ -2085,7 +2658,7 @@ index 867b087c4283..dbcd4467d200 100644
  
      /**
 diff --git a/frameworks/base/core/java/android/app/ActivityThread.java b/frameworks/base/core/java/android/app/ActivityThread.java
-index b7d9f653023e..fc7bbcb7cd0a 100644
+index b7d9f653023e..35a542d0d5af 100644
 --- a/frameworks/base/core/java/android/app/ActivityThread.java
 +++ b/frameworks/base/core/java/android/app/ActivityThread.java
 @@ -3547,7 +3547,11 @@ public final class ActivityThread extends ClientTransactionHandler
@@ -2114,7 +2687,7 @@ index b7d9f653023e..fc7bbcb7cd0a 100644
          }
  
          ViewRootImpl.ConfigChangedCallback configChangedCallback = (Configuration globalConfig) -> {
-@@ -9351,23 +9359,53 @@ public final class ActivityThread extends ClientTransactionHandler
+@@ -9351,23 +9359,63 @@ public final class ActivityThread extends ClientTransactionHandler
          if (!thread.mSystemThread) {
              return;
          }
@@ -2147,7 +2720,17 @@ index b7d9f653023e..fc7bbcb7cd0a 100644
          }
      }
  
++    /**
++     * Initialize the system Application after SystemServer has established its context.
++     */
      @UnsupportedAppUsage
++    public void initializeSystemApplication() {
++        if (mInitialApplication == null) {
++            initializeSystemThread(this);
++        }
++    }
++
++    @UnsupportedAppUsage
 +    private static void kmsg(String msg) {
 +        try (java.io.FileOutputStream fos = new java.io.FileOutputStream("/dev/kmsg")) {
 +            fos.write(("KIKI-AT " + msg + "\n").getBytes());
@@ -2275,10 +2858,10 @@ index cd8cd2cf9e0c..68393bbf2f1e 100644
              throwForNewApplicationFailure(e, app, appClass);
          }
 diff --git a/frameworks/base/core/java/android/app/SystemServiceRegistry.java b/frameworks/base/core/java/android/app/SystemServiceRegistry.java
-index cc0e7b5cb7fa..67d48535cc1d 100644
+index cc0e7b5cb7fa..860ea5740f1e 100644
 --- a/frameworks/base/core/java/android/app/SystemServiceRegistry.java
 +++ b/frameworks/base/core/java/android/app/SystemServiceRegistry.java
-@@ -382,8 +382,20 @@ public final class SystemServiceRegistry {
+@@ -382,6 +382,16 @@ public final class SystemServiceRegistry {
      // Not instantiable.
      private SystemServiceRegistry() { }
  
@@ -2293,14 +2876,9 @@ index cc0e7b5cb7fa..67d48535cc1d 100644
 +    }
 +
      static {
--        registerServices();
-+        // Kiki no-APEX bring-up: defer optional service registry entries until their
-+        // provider classes are available. This keeps framework class initialization alive.
-+        kikiSsrLog("static-skip", new RuntimeException());
+         registerServices();
      }
- 
-     @RavenwoodRedirect
-@@ -2166,78 +2178,87 @@ public final class SystemServiceRegistry {
+@@ -2166,78 +2176,87 @@ public final class SystemServiceRegistry {
  
          sInitializing = true;
          try {
@@ -3313,7 +3891,7 @@ index 68dc6126786e..8c9bb3c7c460 100644
      ScopedLocalRef<jstring> msgstr(env);
      if (tagstr != nullptr) {
 diff --git a/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp b/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
-index 15a7ee4a0a39..db2cda5f555f 100644
+index 15a7ee4a0a39..ef3fb502c190 100644
 --- a/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
 +++ b/frameworks/base/core/jni/com_android_internal_os_Zygote.cpp
 @@ -2633,7 +2633,10 @@ static jint com_android_internal_os_Zygote_nativeForkAndSpecialize(
@@ -3375,7 +3953,7 @@ index 15a7ee4a0a39..db2cda5f555f 100644
    }
  
    initUnsolSocketToSystemServer();
-+  if (android::base::GetBoolProperty("kikiaosp.skip_security_init", true)) {
++  if (android::base::GetBoolProperty("kikiaosp.skip_security_init", false)) {
 +    ALOGI("Kiki: native state sockets ready; skip security context init for bring-up");
 +    return;
 +  }
@@ -3487,8 +4065,38 @@ index 063c6c504575..fb8f2320b38b 100644
  }
  
  AndroidRuntime::AndroidRuntime(char* argBlockStart, const size_t argBlockLength)
+diff --git a/frameworks/base/services/core/java/com/android/server/MountServiceIdler.java b/frameworks/base/services/core/java/com/android/server/MountServiceIdler.java
+index 0f4c94bc8d4f..4caed71a7fa3 100644
+--- a/frameworks/base/services/core/java/com/android/server/MountServiceIdler.java
++++ b/frameworks/base/services/core/java/com/android/server/MountServiceIdler.java
+@@ -98,6 +98,10 @@ public class MountServiceIdler extends JobService {
+      */
+     public static void scheduleIdlePass(Context context) {
+         JobScheduler tm = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
++        if (tm == null) {
++            Slog.i(TAG, "Skipping mount idle pass because JobScheduler is unavailable");
++            return;
++        }
+ 
+         final long today3AM = offsetFromTodayMidnight(0, 3).getTimeInMillis();
+         final long today4AM = offsetFromTodayMidnight(0, 4).getTimeInMillis();
+diff --git a/frameworks/base/services/core/java/com/android/server/SmartStorageMaintIdler.java b/frameworks/base/services/core/java/com/android/server/SmartStorageMaintIdler.java
+index 44f1e76f7a22..8a115b341f8e 100644
+--- a/frameworks/base/services/core/java/com/android/server/SmartStorageMaintIdler.java
++++ b/frameworks/base/services/core/java/com/android/server/SmartStorageMaintIdler.java
+@@ -86,6 +86,10 @@ public class SmartStorageMaintIdler extends JobService {
+         }
+ 
+         JobScheduler tm = context.getSystemService(JobScheduler.class);
++        if (tm == null) {
++            Slog.i(TAG, "Skipping smart storage idle pass because JobScheduler is unavailable");
++            return;
++        }
+ 
+         long nextScheduleTime = TimeUnit.MINUTES.toMillis(nMinutes);
+ 
 diff --git a/frameworks/base/services/core/java/com/android/server/SystemServiceManager.java b/frameworks/base/services/core/java/com/android/server/SystemServiceManager.java
-index dd75a930415e..3f7d088be9a4 100644
+index dd75a930415e..5e1bbfe2501b 100644
 --- a/frameworks/base/services/core/java/com/android/server/SystemServiceManager.java
 +++ b/frameworks/base/services/core/java/com/android/server/SystemServiceManager.java
 @@ -27,6 +27,7 @@ import android.content.pm.PackageManager;
@@ -3499,7 +4107,7 @@ index dd75a930415e..3f7d088be9a4 100644
  import android.os.Trace;
  import android.os.UserHandle;
  import android.util.ArraySet;
-@@ -323,11 +324,35 @@ public final class SystemServiceManager implements Dumpable {
+@@ -323,11 +324,46 @@ public final class SystemServiceManager implements Dumpable {
                  }
              }
              for (final SystemService service : serialServices) {
@@ -3514,7 +4122,18 @@ index dd75a930415e..3f7d088be9a4 100644
 +                            || n.contains("DisplayManagerService")
 +                            || n.contains("InputManagerService")
 +                            || n.contains("WindowManagerService")
-+                            || n.contains("SystemConfigService");
++                            || n.contains("SystemConfigService")
++                            || n.contains("UiModeManagerService")
++                            || n.contains("StorageManagerService")
++                            || n.contains("RoleService")
++                            || n.contains("LockSettingsService")
++                            || n.contains("DevicePolicyManagerService")
++                            || n.contains("InputMethodManagerService")
++                            || n.contains("NotificationManagerService")
++                            || n.contains("SupervisionService")
++                            || n.contains("PermissionPolicyService")
++                            || n.contains("AppHibernationService")
++                            || n.contains("GrammaticalInflectionService");
 +                    if (!core) {
 +                        Slog.i(TAG, "Kiki minimal: skip non-core boot phase " + n
 +                                + " phase=" + mCurrentPhase);
@@ -3567,6 +4186,23 @@ index 897ff9c82167..026bb9340050 100644
          } catch (RemoteException e) {
              Log.w(TAG, e);
          }
+diff --git a/frameworks/base/services/core/java/com/android/server/am/ActiveServices.java b/frameworks/base/services/core/java/com/android/server/am/ActiveServices.java
+index 32c6f6f031c8..c5ba79cdb97d 100644
+--- a/frameworks/base/services/core/java/com/android/server/am/ActiveServices.java
++++ b/frameworks/base/services/core/java/com/android/server/am/ActiveServices.java
+@@ -853,7 +853,11 @@ public final class ActiveServices {
+     }
+ 
+     void systemServicesReady() {
+-        getAppStateTracker().addBackgroundRestrictedAppListener(new BackgroundRestrictedListener());
++        final AppStateTracker appStateTracker = getAppStateTracker();
++        if (appStateTracker != null) {
++            appStateTracker.addBackgroundRestrictedAppListener(
++                    new BackgroundRestrictedListener());
++        }
+         mAppWidgetManagerInternal = LocalServices.getService(AppWidgetManagerInternal.class);
+         setAllowListWhileInUsePermissionInFgs();
+         initSystemExemptedFgsTypePermission();
 diff --git a/frameworks/base/services/core/java/com/android/server/am/ActivityManagerConstants.java b/frameworks/base/services/core/java/com/android/server/am/ActivityManagerConstants.java
 index 0a388844c83e..bfd20cdd13b0 100644
 --- a/frameworks/base/services/core/java/com/android/server/am/ActivityManagerConstants.java
@@ -3686,7 +4322,7 @@ index 0a388844c83e..bfd20cdd13b0 100644
          loadDeviceConfigConstants();
          // The following read from Settings.
 diff --git a/frameworks/base/services/core/java/com/android/server/am/ActivityManagerService.java b/frameworks/base/services/core/java/com/android/server/am/ActivityManagerService.java
-index 4e3bc096a8ca..07a981671d66 100644
+index 4e3bc096a8ca..b4db1150b9c7 100644
 --- a/frameworks/base/services/core/java/com/android/server/am/ActivityManagerService.java
 +++ b/frameworks/base/services/core/java/com/android/server/am/ActivityManagerService.java
 @@ -1228,6 +1228,7 @@ public class ActivityManagerService extends IActivityManager.Stub
@@ -3763,7 +4399,18 @@ index 4e3bc096a8ca..07a981671d66 100644
      }
  
      public void setWindowManager(@NonNull WindowManagerService wm) {
-@@ -2689,7 +2708,13 @@ public class ActivityManagerService extends IActivityManager.Stub
+@@ -2402,7 +2421,9 @@ public class ActivityManagerService extends IActivityManager.Stub
+         public void onBootPhase(int phase) {
+             mService.mBootPhase = phase;
+             if (phase == PHASE_SYSTEM_SERVICES_READY) {
+-                mService.mBatteryStatsService.systemServicesReady();
++                if (!SystemProperties.getBoolean("ro.kikiaosp.minimal_services", true)) {
++                    mService.mBatteryStatsService.systemServicesReady();
++                }
+                 mService.mServices.systemServicesReady();
+                 if (mService.mAppLockLocalService != null) {
+                     mService.mAppLockLocalService.systemServicesReady();
+@@ -2689,7 +2710,13 @@ public class ActivityManagerService extends IActivityManager.Stub
          mServices = new ActiveServices(this);
          mCpHelper = new ContentProviderHelper(this, true);
          mCrashRecoveryHelper = new CrashRecoveryHelper(mUiContext);
@@ -3778,6 +4425,56 @@ index 4e3bc096a8ca..07a981671d66 100644
          mAppErrors = new AppErrors(mUiContext, this, mPackageWatchdog);
          mUidObserverController = new UidObserverController(mUiHandler);
  
+@@ -9695,16 +9722,27 @@ public class ActivityManagerService extends IActivityManager.Stub
+             mUserController.onSystemReady();
+             mAppOpsService.systemReady();
+             mProcessList.onSystemReady();
+-            mAppRestrictionController.onSystemReady();
++            if (!SystemProperties.getBoolean("ro.kikiaosp.minimal_services", true)) {
++                mAppRestrictionController.onSystemReady();
++            } else {
++                Slog.i(TAG, "Kiki minimal profile: skipping app restriction trackers");
++            }
+             mMemoryLimiter.onSystemReady();
+             mSystemReady = true;
+             t.traceEnd();
+         }
+ 
+         try {
+-            sTheRealBuildSerial = IDeviceIdentifiersPolicyService.Stub.asInterface(
+-                    ServiceManager.getService(Context.DEVICE_IDENTIFIERS_SERVICE))
+-                    .getSerial();
++            IDeviceIdentifiersPolicyService deviceIdentifiers =
++                    IDeviceIdentifiersPolicyService.Stub.asInterface(
++                            ServiceManager.getService(Context.DEVICE_IDENTIFIERS_SERVICE));
++            if (deviceIdentifiers != null) {
++                sTheRealBuildSerial = deviceIdentifiers.getSerial();
++            } else if (SystemProperties.getBoolean("ro.kikiaosp.minimal_services", true)) {
++                Slog.i(TAG, "Kiki minimal profile: device identifiers service absent");
++            } else {
++                throw new IllegalStateException("Device identifiers service is unavailable");
++            }
+         } catch (RemoteException e) {}
+ 
+         t.traceBegin("killProcesses");
+diff --git a/frameworks/base/services/core/java/com/android/server/am/AppRestrictionController.java b/frameworks/base/services/core/java/com/android/server/am/AppRestrictionController.java
+index 9ad1cd6ed58c..b2a9d7a01d45 100644
+--- a/frameworks/base/services/core/java/com/android/server/am/AppRestrictionController.java
++++ b/frameworks/base/services/core/java/com/android/server/am/AppRestrictionController.java
+@@ -1522,8 +1522,11 @@ public final class AppRestrictionController {
+         registerForSystemBroadcasts();
+         registerCarrierPrivilegesCallbacks();
+         mNotificationHelper.onSystemReady();
+-        mInjector.getAppStateTracker().addBackgroundRestrictedAppListener(
+-                mBackgroundRestrictionListener);
++        final AppStateTracker appStateTracker = mInjector.getAppStateTracker();
++        if (appStateTracker != null) {
++            appStateTracker.addBackgroundRestrictedAppListener(
++                    mBackgroundRestrictionListener);
++        }
+         mInjector.getAppStandbyInternal().addListener(mAppIdleStateChangeListener);
+         mInjector.getRoleManager().addOnRoleHoldersChangedListenerAsUser(mExecutor,
+                 mRoleHolderChangedListener, UserHandle.ALL);
 diff --git a/frameworks/base/services/core/java/com/android/server/display/LogicalDisplayMapper.java b/frameworks/base/services/core/java/com/android/server/display/LogicalDisplayMapper.java
 index ad113a2513f3..4a362e3fddf5 100644
 --- a/frameworks/base/services/core/java/com/android/server/display/LogicalDisplayMapper.java
@@ -3791,8 +4488,24 @@ index ad113a2513f3..4a362e3fddf5 100644
          mHandler = new LogicalDisplayMapperHandler(handler.getLooper());
          mDisplayDeviceRepo = repo;
          mListener = listener;
+diff --git a/frameworks/base/services/core/java/com/android/server/display/mode/ProximitySensorObserver.java b/frameworks/base/services/core/java/com/android/server/display/mode/ProximitySensorObserver.java
+index 0f78f0df006b..b11dba8977be 100644
+--- a/frameworks/base/services/core/java/com/android/server/display/mode/ProximitySensorObserver.java
++++ b/frameworks/base/services/core/java/com/android/server/display/mode/ProximitySensorObserver.java
+@@ -63,7 +63,10 @@ class ProximitySensorObserver implements
+         mDisplayManagerInternal = mInjector.getDisplayManagerInternal();
+ 
+         final SensorManagerInternal sensorManager = mInjector.getSensorManagerInternal();
+-        sensorManager.addProximityActiveListener(BackgroundThread.getExecutor(), this);
++        // Sensorless virtual devices deliberately omit SensorManagerInternal.
++        if (sensorManager != null) {
++            sensorManager.addProximityActiveListener(BackgroundThread.getExecutor(), this);
++        }
+ 
+         synchronized (mSensorObserverLock) {
+             for (Display d : mInjector.getDisplays()) {
 diff --git a/frameworks/base/services/core/java/com/android/server/input/InputManagerService.java b/frameworks/base/services/core/java/com/android/server/input/InputManagerService.java
-index fae546b85a8a..ac8f72b5c376 100644
+index fae546b85a8a..1d81a7e3365e 100644
 --- a/frameworks/base/services/core/java/com/android/server/input/InputManagerService.java
 +++ b/frameworks/base/services/core/java/com/android/server/input/InputManagerService.java
 @@ -105,6 +105,7 @@ import android.os.Looper;
@@ -3822,6 +4535,23 @@ index fae546b85a8a..ac8f72b5c376 100644
                  NAMESPACE_INPUT_NATIVE_BOOT, VELOCITYTRACKER_STRATEGY_PROPERTY);
  
          injector.registerLocalService(new LocalService());
+@@ -722,8 +724,14 @@ public class InputManagerService extends IInputManager.Stub
+         mKeyGestureController.systemRunning();
+ 
+         if (AttentionManagerService.isInteractionProviderServiceEnabled(mContext)) {
+-            mNative.setInteractionProviderService(
+-                    LocalServices.getService(InteractionProviderInternal.class));
++            final InteractionProviderInternal interactionProvider =
++                    LocalServices.getService(InteractionProviderInternal.class);
++            if (interactionProvider != null) {
++                mNative.setInteractionProviderService(interactionProvider);
++            } else {
++                // The interaction provider is optional in the Kiki minimal service profile.
++                Slog.i(TAG, "Skipping optional interaction provider; service is unavailable");
++            }
+         }
+         initKeyGestures();
+     }
 diff --git a/frameworks/base/services/core/java/com/android/server/input/KeyGestureController.java b/frameworks/base/services/core/java/com/android/server/input/KeyGestureController.java
 index c332f36e9af4..c740786c6228 100644
 --- a/frameworks/base/services/core/java/com/android/server/input/KeyGestureController.java
@@ -4291,7 +5021,7 @@ index e7bb826461bc..22f43bb6b32f 100644
              metrics.setInitAppScanOutcome(PackageManager.INSTALL_SUCCEEDED);
              return new Pair<>(scanResult, shouldHideSystemApp);
 diff --git a/frameworks/base/services/core/java/com/android/server/pm/PackageManagerService.java b/frameworks/base/services/core/java/com/android/server/pm/PackageManagerService.java
-index 9f2d4dbe88a7..47ac7d221274 100644
+index 9f2d4dbe88a7..902a02a86c12 100644
 --- a/frameworks/base/services/core/java/com/android/server/pm/PackageManagerService.java
 +++ b/frameworks/base/services/core/java/com/android/server/pm/PackageManagerService.java
 @@ -345,6 +345,12 @@ import java.util.function.Predicate;
@@ -4404,6 +5134,19 @@ index 9f2d4dbe88a7..47ac7d221274 100644
      }
  
      @GuardedBy("mLock")
+@@ -6004,6 +6039,12 @@ public class PackageManagerService implements PackageSender, TestUtilityService
+                 return;
+             }
+ 
++            if (SystemProperties.getBoolean("ro.kikiaosp.minimal_services", true)) {
++                Slog.i(PackageManagerService.TAG,
++                        "Kiki minimal: skipping optional ART dex-use tracking");
++                return;
++            }
++
+             DexUseManagerLocal dexUseManager = DexOptHelper.getDexUseManagerLocal();
+             try (PackageManagerLocal.FilteredSnapshot filteredSnapshot =
+                             LocalManagerRegistry.getManager(PackageManagerLocal.class)
 diff --git a/frameworks/base/services/core/java/com/android/server/pm/ScanPackageUtils.java b/frameworks/base/services/core/java/com/android/server/pm/ScanPackageUtils.java
 index d51046ef1a1a..993d54a1eef7 100644
 --- a/frameworks/base/services/core/java/com/android/server/pm/ScanPackageUtils.java
@@ -4605,6 +5348,114 @@ index d8749d06020b..a2856e25ad85 100644
          }
      }
  
+diff --git a/frameworks/base/services/core/java/com/android/server/policy/DeviceStateProviderImpl.java b/frameworks/base/services/core/java/com/android/server/policy/DeviceStateProviderImpl.java
+index a755ee1cd0fe..7277c0452a24 100644
+--- a/frameworks/base/services/core/java/com/android/server/policy/DeviceStateProviderImpl.java
++++ b/frameworks/base/services/core/java/com/android/server/policy/DeviceStateProviderImpl.java
+@@ -508,10 +508,12 @@ public final class DeviceStateProviderImpl implements DeviceStateProvider,
+             inputManager.registerLidSwitchCallback(this);
+         }
+ 
+-        final SensorManager sensorManager = mContext.getSystemService(SensorManager.class);
+-        for (int i = 0; i < sensorsToListenTo.size(); i++) {
+-            Sensor sensor = sensorsToListenTo.valueAt(i);
+-            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST);
++        if (!sensorsToListenTo.isEmpty()) {
++            final SensorManager sensorManager = mContext.getSystemService(SensorManager.class);
++            for (int i = 0; i < sensorsToListenTo.size(); i++) {
++                Sensor sensor = sensorsToListenTo.valueAt(i);
++                sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST);
++            }
+         }
+     }
+ 
+diff --git a/frameworks/base/services/core/java/com/android/server/policy/ModifierShortcutManager.java b/frameworks/base/services/core/java/com/android/server/policy/ModifierShortcutManager.java
+index a18a9edc56a8..caae0147a9c0 100644
+--- a/frameworks/base/services/core/java/com/android/server/policy/ModifierShortcutManager.java
++++ b/frameworks/base/services/core/java/com/android/server/policy/ModifierShortcutManager.java
+@@ -60,20 +60,24 @@ public class ModifierShortcutManager {
+     ModifierShortcutManager(Context context, UserHandle currentUser) {
+         mContext = context;
+         RoleManager rm = mContext.getSystemService(RoleManager.class);
+-        rm.addOnRoleHoldersChangedListenerAsUser(mContext.getMainExecutor(),
+-                (String roleName, UserHandle user) -> {
+-                    synchronized (mAppIntentCache) {
+-                        mAppIntentCache.entrySet().removeIf(
+-                                entry -> {
+-                                    if (entry.getKey() instanceof AppLaunchData.RoleData) {
+-                                        return Objects.equals(
+-                                                ((AppLaunchData.RoleData) entry.getKey()).getRole(),
+-                                                roleName);
+-                                    }
+-                                    return false;
+-                                });
+-                    }
+-                }, UserHandle.ALL);
++        if (rm != null) {
++            rm.addOnRoleHoldersChangedListenerAsUser(mContext.getMainExecutor(),
++                    (String roleName, UserHandle user) -> {
++                        synchronized (mAppIntentCache) {
++                            mAppIntentCache.entrySet().removeIf(
++                                    entry -> {
++                                        if (entry.getKey() instanceof AppLaunchData.RoleData) {
++                                            return Objects.equals(
++                                                    ((AppLaunchData.RoleData) entry.getKey()).getRole(),
++                                                    roleName);
++                                        }
++                                        return false;
++                                    });
++                        }
++                    }, UserHandle.ALL);
++        } else {
++            Log.i(TAG, "RoleManager unavailable; role-based app shortcuts are disabled");
++        }
+         mCurrentUser = currentUser;
+     }
+ 
+@@ -89,6 +93,10 @@ public class ModifierShortcutManager {
+         Intent intent = null;
+         RoleManager rm = context.getSystemService(RoleManager.class);
+         PackageManager pm = context.getPackageManager();
++        if (rm == null) {
++            Log.w(TAG, "RoleManager unavailable; cannot resolve role " + role);
++            return null;
++        }
+         if (rm.isRoleAvailable(role)) {
+             String rolePackage = rm.getDefaultApplication(role);
+             if (rolePackage != null) {
+diff --git a/frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java b/frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java
+index 1af1825d32cf..a51fd9847977 100644
+--- a/frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java
++++ b/frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java
+@@ -2342,7 +2342,8 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         }
+ 
+         mHandler = new PolicyHandler(injector.getLooper());
+-        mWakeGestureListener = new MyWakeGestureListener(mContext, mHandler);
++        mWakeGestureListener = SystemProperties.getBoolean("ro.kikiaosp.sensorless", false)
++                ? null : new MyWakeGestureListener(mContext, mHandler);
+         mSettingsObserver = new SettingsObserver(mHandler);
+         mSettingsObserver.observe();
+         mModifierShortcutManager = new ModifierShortcutManager(mContext,
+@@ -3082,6 +3083,9 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+     }
+ 
+     private void updateWakeGestureListenerLp() {
++        if (mWakeGestureListener == null) {
++            return;
++        }
+         if (shouldEnableWakeGestureLp()) {
+             mWakeGestureListener.requestWakeUpTrigger();
+         } else {
+@@ -3093,7 +3097,7 @@ public class PhoneWindowManager implements WindowManagerPolicy {
+         return mWakeGestureEnabledSetting && !mDefaultDisplayPolicy.isAwake()
+                 && (getLidBehavior() != LID_BEHAVIOR_SLEEP
+                 || mDefaultDisplayPolicy.getLidState() != LID_CLOSED)
+-                && mWakeGestureListener.isSupported();
++                && mWakeGestureListener != null && mWakeGestureListener.isSupported();
+     }
+ 
+     /** {@inheritDoc} */
 diff --git a/frameworks/base/services/core/java/com/android/server/uri/UriGrantsManagerService.java b/frameworks/base/services/core/java/com/android/server/uri/UriGrantsManagerService.java
 index 895781c5d2b6..c1d9136c9f2c 100644
 --- a/frameworks/base/services/core/java/com/android/server/uri/UriGrantsManagerService.java
@@ -4731,6 +5582,35 @@ index e80d8e2b86ac..05faa1e236c8 100644
  
              for (int i = 0; i < deviceStates.size(); i++) {
                  final android.hardware.devicestate.DeviceState state = deviceStates.get(i);
+diff --git a/frameworks/base/services/core/java/com/android/server/wm/DisplayRotation.java b/frameworks/base/services/core/java/com/android/server/wm/DisplayRotation.java
+index c0cc25fcf51b..c232c31f3d1d 100644
+--- a/frameworks/base/services/core/java/com/android/server/wm/DisplayRotation.java
++++ b/frameworks/base/services/core/java/com/android/server/wm/DisplayRotation.java
+@@ -285,9 +285,11 @@ public class DisplayRotation {
+ 
+         if (isDefaultDisplay) {
+             final Handler uiHandler = UiThread.getHandler();
+-            mOrientationListener =
+-                    new OrientationListener(mContext, uiHandler, defaultRotation);
+-            mOrientationListener.setCurrentRotation(mRotation);
++            if (mSupportAutoRotation) {
++                mOrientationListener =
++                        new OrientationListener(mContext, uiHandler, defaultRotation);
++                mOrientationListener.setCurrentRotation(mRotation);
++            }
+             mSettingsObserver = new SettingsObserver(uiHandler);
+             mSettingsObserver.observe();
+             if (mSupportAutoRotation && mDeviceStateController.isFoldable()) {
+@@ -1541,7 +1543,8 @@ public class DisplayRotation {
+      * Called from {@link ActivityRecord#setRequestedOrientation(int)}
+      */
+     void onSetRequestedOrientation() {
+-        if (mCompatPolicyForImmersiveApps == null
++        if (mOrientationListener == null
++                || mCompatPolicyForImmersiveApps == null
+                 || mRotationChoiceShownToUserForConfirmation == ROTATION_UNDEFINED) {
+             return;
+         }
 diff --git a/frameworks/base/services/core/java/com/android/server/wm/SynchedDeviceConfig.java b/frameworks/base/services/core/java/com/android/server/wm/SynchedDeviceConfig.java
 index 4d4f99f5b68e..e35c916937e5 100644
 --- a/frameworks/base/services/core/java/com/android/server/wm/SynchedDeviceConfig.java
@@ -4881,7 +5761,7 @@ index 255e30e5c5d7..d8cf254aa3ff 100644
  
  } /* namespace android */
 diff --git a/frameworks/base/services/java/com/android/server/SystemServer.java b/frameworks/base/services/java/com/android/server/SystemServer.java
-index 3ea580823df6..30de11f69a44 100644
+index 3ea580823df6..f407ab4d7c6e 100644
 --- a/frameworks/base/services/java/com/android/server/SystemServer.java
 +++ b/frameworks/base/services/java/com/android/server/SystemServer.java
 @@ -349,6 +349,15 @@ import java.util.concurrent.Future;
@@ -5346,7 +6226,7 @@ index 3ea580823df6..30de11f69a44 100644
          } finally {
              t.traceEnd(); // StartServices
          }
-@@ -1174,15 +1349,36 @@ public final class SystemServer implements Dumpable {
+@@ -1174,15 +1349,38 @@ public final class SystemServer implements Dumpable {
      }
  
      private void createSystemContext() {
@@ -5382,6 +6262,8 @@ index 3ea580823df6..30de11f69a44 100644
 +            }
 +            Trace.registerWithPerfetto();
 +            kmsg("createSystemContext-after-perfetto");
++            activityThread.initializeSystemApplication();
++            kmsg("createSystemContext-after-initializeSystemApplication");
 +        } catch (Throwable t) {
 +            dumpThrowable("createSystemContext-fatal", t);
 +            throw t;
@@ -5391,7 +6273,7 @@ index 3ea580823df6..30de11f69a44 100644
      /**
       * Starts the small tangle of critical services that are needed to get the system off the
       * ground.  These services have complex mutual dependencies which is why we initialize them all
-@@ -1200,7 +1396,13 @@ public final class SystemServer implements Dumpable {
+@@ -1200,7 +1398,13 @@ public final class SystemServer implements Dumpable {
          // class linker earlier. If we did this later, especially after PackageManagerService init,
          // the class linker would be consistently blocked by a GC because PackageManagerService
          // allocates a lot of memory and almost certainly triggers a GC.
@@ -5406,7 +6288,7 @@ index 3ea580823df6..30de11f69a44 100644
          t.traceEnd();
  
          // Start the watchdog as early as possible so we can crash the system server
-@@ -1247,14 +1449,16 @@ public final class SystemServer implements Dumpable {
+@@ -1247,14 +1451,16 @@ public final class SystemServer implements Dumpable {
  
          // In some cases after launching an app we need to access device identifiers,
          // therefore register the device identifier policy before the activity manager.
@@ -5427,7 +6309,7 @@ index 3ea580823df6..30de11f69a44 100644
          t.traceEnd();
  
          // Uri Grants Manager.
-@@ -1264,7 +1468,7 @@ public final class SystemServer implements Dumpable {
+@@ -1264,7 +1470,7 @@ public final class SystemServer implements Dumpable {
  
          t.traceBegin("StartPowerStatsService");
          // Tracks rail data to be used for power statistics.
@@ -5436,7 +6318,7 @@ index 3ea580823df6..30de11f69a44 100644
          t.traceEnd();
  
          t.traceBegin("StartIStatsService");
-@@ -1370,17 +1574,29 @@ public final class SystemServer implements Dumpable {
+@@ -1370,17 +1576,29 @@ public final class SystemServer implements Dumpable {
          t.traceEnd();
  
          t.traceBegin("StartPackageManagerService");
@@ -5466,7 +6348,7 @@ index 3ea580823df6..30de11f69a44 100644
          t.traceEnd();
  
          t.traceBegin("DexUseManagerLocal");
-@@ -1416,24 +1632,42 @@ public final class SystemServer implements Dumpable {
+@@ -1416,24 +1634,42 @@ public final class SystemServer implements Dumpable {
          // Set up the Application instance for the system process and get started.
          t.traceBegin("SetSystemProcess");
          mActivityManagerService.setSystemProcess();
@@ -5512,7 +6394,7 @@ index 3ea580823df6..30de11f69a44 100644
          t.traceEnd();
  
          // Manages Resources packages
-@@ -1444,7 +1678,11 @@ public final class SystemServer implements Dumpable {
+@@ -1444,7 +1680,11 @@ public final class SystemServer implements Dumpable {
          t.traceEnd();
  
          t.traceBegin("StartSensorPrivacyService");
@@ -5525,7 +6407,7 @@ index 3ea580823df6..30de11f69a44 100644
          t.traceEnd();
  
          if (SystemProperties.getInt("persist.sys.displayinset.top", 0) > 0) {
-@@ -1455,9 +1693,11 @@ public final class SystemServer implements Dumpable {
+@@ -1455,9 +1695,11 @@ public final class SystemServer implements Dumpable {
  
          // The sensor service needs access to package manager service, app ops
          // service, and permissions service, therefore we start it after them.
@@ -5540,7 +6422,7 @@ index 3ea580823df6..30de11f69a44 100644
          t.traceEnd(); // startBootstrapServices
      }
  
-@@ -1474,21 +1714,32 @@ public final class SystemServer implements Dumpable {
+@@ -1474,21 +1716,32 @@ public final class SystemServer implements Dumpable {
  
          t.traceBegin("StartBatteryService");
          // Tracks the battery level.  Requires LightService.
@@ -5578,7 +6460,7 @@ index 3ea580823df6..30de11f69a44 100644
          }
  
          // Tracks and caches the device state.
-@@ -1507,38 +1758,52 @@ public final class SystemServer implements Dumpable {
+@@ -1507,38 +1760,52 @@ public final class SystemServer implements Dumpable {
          mSystemServiceManager.startService(LooperStatsService.Lifecycle.class);
          t.traceEnd();
  
@@ -5648,7 +6530,7 @@ index 3ea580823df6..30de11f69a44 100644
          }
  
          t.traceEnd(); // startCoreServices
-@@ -1573,6 +1838,7 @@ public final class SystemServer implements Dumpable {
+@@ -1573,6 +1840,7 @@ public final class SystemServer implements Dumpable {
                  false);
          boolean disableCameraService = SystemProperties.getBoolean("config.disable_cameraservice",
                  false);
@@ -5656,7 +6538,7 @@ index 3ea580823df6..30de11f69a44 100644
  
          boolean isWatch = RoSystemFeatures.hasFeatureWatch(context);
  
-@@ -1604,22 +1870,32 @@ public final class SystemServer implements Dumpable {
+@@ -1604,22 +1872,32 @@ public final class SystemServer implements Dumpable {
                  }
              }, SECONDARY_ZYGOTE_PRELOAD);
  
@@ -5700,7 +6582,7 @@ index 3ea580823df6..30de11f69a44 100644
  
              if (com.android.server.ui_latency_stats.Flags.uiLatencyStatsService()) {
                  t.traceBegin("StartUiLatencyStatsService");
-@@ -1630,42 +1906,53 @@ public final class SystemServer implements Dumpable {
+@@ -1630,23 +1908,30 @@ public final class SystemServer implements Dumpable {
  
              // TelecomLoader hooks into classes with defined HFP logic,
              // so check for either telephony or microphone.
@@ -5719,7 +6601,7 @@ index 3ea580823df6..30de11f69a44 100644
 -            telephonyRegistry = new TelephonyRegistry(
 -                    context, new TelephonyRegistry.ConfigurationProvider());
 -            ServiceManager.addService("telephony.registry", telephonyRegistry);
-+            if (SystemProperties.getBoolean("ro.kikiaosp.telephony_registry", false)) {
++            if (!kikiMinimalServices || SystemProperties.getBoolean("ro.kikiaosp.telephony_registry", false)) {
 +                telephonyRegistry = new TelephonyRegistry(
 +                        context, new TelephonyRegistry.ConfigurationProvider());
 +                ServiceManager.addService("telephony.registry", telephonyRegistry);
@@ -5738,45 +6620,25 @@ index 3ea580823df6..30de11f69a44 100644
 +            } else { kmsg("skip-entropy-mixer"); }
  
              // The AccountManager must come before the ContentService
--            t.traceBegin("StartAccountManagerService");
--            mSystemServiceManager.startService(AccountManagerService.Lifecycle.class);
--            t.traceEnd();
-+            if (!kikiMinimalServices) {
-+                t.traceBegin("StartAccountManagerService");
-+                mSystemServiceManager.startService(AccountManagerService.Lifecycle.class);
-+                t.traceEnd();
-+            } else { kmsg("skip-account-manager"); }
- 
--            t.traceBegin("StartContentService");
--            mSystemServiceManager.startService(ContentService.Lifecycle.class);
--            t.traceEnd();
-+            if (!kikiMinimalServices) {
-+                t.traceBegin("StartContentService");
-+                mSystemServiceManager.startService(ContentService.Lifecycle.class);
-+                t.traceEnd();
-+            } else { kmsg("skip-content-service"); }
- 
--            t.traceBegin("InstallSystemProviders");
--            mActivityManagerService.getContentProviderHelper().installSystemProviders();
--            // Device configuration used to be part of System providers
+             t.traceBegin("StartAccountManagerService");
+@@ -1660,12 +1945,14 @@ public final class SystemServer implements Dumpable {
+             t.traceBegin("InstallSystemProviders");
+             mActivityManagerService.getContentProviderHelper().installSystemProviders();
+             // Device configuration used to be part of System providers
 -            mSystemServiceManager.startService(UPDATABLE_DEVICE_CONFIG_SERVICE_CLASS);
--            // Now that SettingsProvider is ready, reactivate SQLiteCompatibilityWalFlags
--            SQLiteCompatibilityWalFlags.reset();
--            t.traceEnd();
 +            if (!kikiMinimalServices) {
-+                t.traceBegin("InstallSystemProviders");
-+                mActivityManagerService.getContentProviderHelper().installSystemProviders();
 +                mSystemServiceManager.startService(UPDATABLE_DEVICE_CONFIG_SERVICE_CLASS);
-+                SQLiteCompatibilityWalFlags.reset();
-+                t.traceEnd();
-+            } else { kmsg("skip-system-providers"); }
++            }
+             // Now that SettingsProvider is ready, reactivate SQLiteCompatibilityWalFlags
+             SQLiteCompatibilityWalFlags.reset();
+             t.traceEnd();
  
 -            if (mPackageManager.hasSystemFeature(PackageManager.FEATURE_NEURAL_PROCESSING_UNIT)
 +            if (!kikiMinimalServices && mPackageManager.hasSystemFeature(PackageManager.FEATURE_NEURAL_PROCESSING_UNIT)
                      && com.android.npumanager.Flags.npumanagerEnabled()) {
                  t.traceBegin("StartNpuManagerService");
                  mSystemServiceManager.startService(NPU_MANAGER_SERVICE_CLASS);
-@@ -1675,55 +1962,65 @@ public final class SystemServer implements Dumpable {
+@@ -1675,21 +1962,25 @@ public final class SystemServer implements Dumpable {
              // Records errors and logs, for example wtf()
              // Currently this service indirectly depends on SettingsProvider so do this after
              // InstallSystemProviders.
@@ -5810,30 +6672,16 @@ index 3ea580823df6..30de11f69a44 100644
                  t.traceBegin("StartAllowlistService");
                  mSystemServiceManager.startService(AllowlistService.class);
                  t.traceEnd();
-             }
+@@ -1702,28 +1993,33 @@ public final class SystemServer implements Dumpable {
+             mSystemServiceManager.startService(ROLE_SERVICE_CLASS);
+             t.traceEnd();
  
-             // Grants default permissions and defines roles
--            t.traceBegin("StartRoleManagerService");
--            LocalManagerRegistry.addManager(RoleServicePlatformHelper.class,
--                    new RoleServicePlatformHelperImpl(mSystemContext));
--            mSystemServiceManager.startService(ROLE_SERVICE_CLASS);
--            t.traceEnd();
-+            if (!kikiMinimalServices) {
-+                t.traceBegin("StartRoleManagerService");
-+                LocalManagerRegistry.addManager(RoleServicePlatformHelper.class,
-+                        new RoleServicePlatformHelperImpl(mSystemContext));
-+                mSystemServiceManager.startService(ROLE_SERVICE_CLASS);
-+                t.traceEnd();
-+            } else { kmsg("skip-role-manager"); }
- 
--            t.traceBegin("StartSupervisionService");
--            mSystemServiceManager.startService(SupervisionService.Lifecycle.class);
--            t.traceEnd();
-+            if (!kikiMinimalServices) {
-+                t.traceBegin("StartSupervisionService");
-+                mSystemServiceManager.startService(SupervisionService.Lifecycle.class);
-+                t.traceEnd();
-+            } else { kmsg("skip-supervision"); }
++            // RoleController's stock supervision-role behavior consults this service while
++            // granting default roles. Keep the AOSP dependency alive in Kiki minimal mode too;
++            // the service is inert unless a supervision owner/app is configured.
+             t.traceBegin("StartSupervisionService");
+             mSystemServiceManager.startService(SupervisionService.Lifecycle.class);
+             t.traceEnd();
  
 -            if (!isTv) {
 +            if (!kikiMinimalServices && !isTv) {
@@ -5865,19 +6713,7 @@ index 3ea580823df6..30de11f69a44 100644
                  t.traceBegin("StartConsumerIrService");
                  consumerIr = new ConsumerIrService(context);
                  ServiceManager.addService(Context.CONSUMER_IR_SERVICE, consumerIr);
-@@ -1731,70 +2028,136 @@ public final class SystemServer implements Dumpable {
-             }
- 
-             // TODO(aml-jobscheduler): Think about how to do it properly.
--            t.traceBegin("StartAlarmManagerService");
--            mSystemServiceManager.startService(AlarmManagerService.class);
--            t.traceEnd();
-+            if (!kikiMinimalServices) {
-+                t.traceBegin("StartAlarmManagerService");
-+                mSystemServiceManager.startService(AlarmManagerService.class);
-+                t.traceEnd();
-+            } else { kmsg("skip-alarm-manager"); }
- 
+@@ -1738,63 +2034,194 @@ public final class SystemServer implements Dumpable {
              t.traceBegin("StartInputManagerService");
              inputManager = mSystemServiceManager.startService(
                      InputManagerService.Lifecycle.class).getService();
@@ -5885,14 +6721,9 @@ index 3ea580823df6..30de11f69a44 100644
              t.traceEnd();
 +            kmsg("minimal-after-input-lifecycle");
  
--            t.traceBegin("DeviceStateManagerService");
--            mSystemServiceManager.startService(DeviceStateManagerService.class);
--            t.traceEnd();
-+            if (!kikiMinimalServices) {
-+                t.traceBegin("DeviceStateManagerService");
-+                mSystemServiceManager.startService(DeviceStateManagerService.class);
-+                t.traceEnd();
-+            } else { kmsg("skip-device-state"); }
+             t.traceBegin("DeviceStateManagerService");
+             mSystemServiceManager.startService(DeviceStateManagerService.class);
+             t.traceEnd();
 +            kmsg("minimal-after-device-state");
  
 -            if (!disableCameraService) {
@@ -6014,16 +6845,85 @@ index 3ea580823df6..30de11f69a44 100644
              t.traceEnd();
  
 +            // KikiAOSP minimal display bring-up: after the display/input graph exists,
-+            // skip all optional hardware and integration services. This keeps only the
-+            // boot/package/activity/window/display path for a stable black-screen test.
++            // restore the smallest framework service set required by stock SystemUI,
++            // notifications, and the configured HOME activity. Optional device hardware
++            // and integration services remain disabled.
 +            if (kikiMinimalServices) {
 +                kmsg("minimal-services-shortcut");
 +                t.traceBegin("KikiMinimalReady");
 +                wm.displayReady();
++                t.traceBegin("KikiStartInputMethodManagerLifecycle");
++                if (mFactoryTestMode != FactoryTest.FACTORY_TEST_LOW_LEVEL) {
++                    mSystemServiceManager.startService(InputMethodManagerService.Lifecycle.class);
++                }
++                t.traceEnd();
++                t.traceBegin("KikiStartUiModeManagerService");
++                mSystemServiceManager.startService(UiModeManagerService.class);
++                t.traceEnd();
++                t.traceBegin("KikiStartStorageManagerService");
++                mSystemServiceManager.startService(StorageManagerService.Lifecycle.class);
++                t.traceEnd();
++                t.traceBegin("KikiStartGrammaticalInflectionService");
++                mSystemServiceManager.startService(GrammaticalInflectionService.class);
++                t.traceEnd();
++                t.traceBegin("KikiStartAppHibernationService");
++                mSystemServiceManager.startService(AppHibernationService.class);
++                t.traceEnd();
++                t.traceBegin("KikiArtManagerLocal");
++                DexOptHelper.initializeArtManagerLocal(context, mPackageManagerService);
++                t.traceEnd();
++                t.traceBegin("KikiStartStatusBarManagerService");
++                StatusBarManagerService kikiStatusBar = new StatusBarManagerService(context);
++                kikiStatusBar.publishGlobalActionsProvider();
++                ServiceManager.addService(Context.STATUS_BAR_SERVICE, kikiStatusBar, false,
++                        DUMP_FLAG_PRIORITY_NORMAL | DUMP_FLAG_PROTO);
++                t.traceEnd();
++                t.traceBegin("KikiStartNotificationManagerService");
++                mSystemServiceManager.startService(NotificationManagerService.class);
++                try {
++                    SystemNotificationChannels.removeDeprecated(context);
++                    SystemNotificationChannels.createAll(context);
++                } catch (Throwable e) {
++                    kmsg("minimal-notification-channels-skipped " + e);
++                }
++                t.traceEnd();
++                // Match the stock services required by RoleController's first user-start
++                // callback. The minimal path enters ActivityManager.systemReady() before
++                // reaching the full-path LockSettings/DevicePolicy startup below.
++                t.traceBegin("KikiStartLockSettingsService");
++                mSystemServiceManager.startService(LockSettingsService.Lifecycle.class);
++                t.traceEnd();
++                t.traceBegin("KikiStartDevicePolicyManagerService");
++                mSystemServiceManager.startService(DevicePolicyManagerService.Lifecycle.class);
++                t.traceEnd();
++                t.traceBegin("KikiSystemServicesReady");
++                mSystemServiceManager.startBootPhase(t, SystemService.PHASE_SYSTEM_SERVICES_READY);
++                t.traceEnd();
 +                wm.systemReady();
++                t.traceBegin("StartPermissionPolicyService");
++                mSystemServiceManager.startService(PermissionPolicyService.class);
++                t.traceEnd();
++                t.traceBegin("KikiWaitForAppDataPrepared");
++                mPackageManagerService.waitForAppDataPrepared();
++                t.traceEnd();
 +                mPackageManagerService.systemReady();
 +                mDisplayManagerService.systemReady(false);
-+                mActivityManagerService.systemReady(() -> kmsg("minimal-activity-ready"), t);
++                final WindowManagerService kikiWindowManager = wm;
++                mActivityManagerService.systemReady(() -> {
++                    t.traceBegin("KikiActivityManagerReadyPhase");
++                    mSystemServiceManager.startBootPhase(
++                            t, SystemService.PHASE_ACTIVITY_MANAGER_READY);
++                    t.traceEnd();
++                    kmsg("minimal-activity-ready");
++                    t.traceBegin("KikiThirdPartyAppsReadyPhase");
++                    mSystemServiceManager.startBootPhase(
++                            t, SystemService.PHASE_THIRD_PARTY_APPS_CAN_START);
++                    t.traceEnd();
++                    kmsg("minimal-third-party-apps-ready");
++                    t.traceBegin("KikiStartSystemUI");
++                    startSystemUi(context, kikiWindowManager);
++                    t.traceEnd();
++                }, t);
 +                t.traceEnd();
 +                return;
 +            }
@@ -6031,12 +6931,6 @@ index 3ea580823df6..30de11f69a44 100644
              if (mFactoryTestMode == FactoryTest.FACTORY_TEST_LOW_LEVEL) {
                  Slog.i(TAG, "No Bluetooth Service (factory test)");
              } else if (!context.getPackageManager().hasSystemFeature
-@@ -3860,3 +4223,4 @@ public final class SystemServer implements Dumpable {
-     }
- 
- }
-+
-
 diff --git a/frameworks/native/cmds/flatland/Android.bp b/frameworks/native/cmds/flatland/Android.bp
 index 39a0d752a5..2f9174ede1 100644
 --- a/frameworks/native/cmds/flatland/Android.bp
@@ -6118,6 +7012,40 @@ index f666e99940..3152027371 100644
      ALOGD("%sRenderEngine with Skia%s Backend (%s)",
            args.threaded == Threaded::Yes ? "Threaded " : "",
            ftl::enum_string(args.graphicsApi).c_str(), ftl::enum_string(args.skiaBackend).c_str());
+diff --git a/frameworks/native/libs/renderengine/skia/AutoBackendTexture.cpp b/frameworks/native/libs/renderengine/skia/AutoBackendTexture.cpp
+index acf933869b..57836b520c 100644
+--- a/frameworks/native/libs/renderengine/skia/AutoBackendTexture.cpp
++++ b/frameworks/native/libs/renderengine/skia/AutoBackendTexture.cpp
+@@ -64,10 +64,11 @@ sk_sp<SkImage> AutoBackendTexture::makeImage(ui::Dataspace dataspace, SkAlphaTyp
+                                              ftl::Flags<ColorSpaceOptions> options) {
+     SFTRACE_CALL();
+ 
++    // A CPU-backed image is copied out of its AHardwareBuffer and can release
++    // that buffer before makeImage() returns. Account for the callback first.
++    ref();
+     sk_sp<SkImage> image =
+             mBackendTexture->makeImage(alphaType, dataspace, releaseImageProc, this, options);
+-    // The following ref will be counteracted by releaseProc, when SkImage is discarded.
+-    ref();
+ 
+     mImage = image;
+     mDataspace = dataspace;
+@@ -80,10 +81,13 @@ sk_sp<SkSurface> AutoBackendTexture::getOrCreateSurface(ui::Dataspace dataspace,
+     LOG_ALWAYS_FATAL_IF(!mBackendTexture->isOutputBuffer(),
+                         "You can't generate an SkSurface for a read-only texture");
+     if (!mSurface.get() || mDataspace != dataspace) {
++        // A backend may reject a buffer and invoke its release callback before
++        // makeSurface() returns. Account for that callback before entering the
++        // backend; otherwise it can queue this texture for deletion while its
++        // LocalRef is still alive, leading to a duplicate cleanup entry.
++        ref();
+         sk_sp<SkSurface> surface =
+                 mBackendTexture->makeSurface(dataspace, releaseSurfaceProc, this, options);
+-        // The following ref will be counteracted by releaseProc, when SkSurface is discarded.
+-        ref();
+ 
+         mSurface = surface;
+     }
 diff --git a/frameworks/native/libs/renderengine/skia/GLExtensions.cpp b/frameworks/native/libs/renderengine/skia/GLExtensions.cpp
 index 1d4d35fb54..778448878b 100644
 --- a/frameworks/native/libs/renderengine/skia/GLExtensions.cpp
@@ -6229,8 +7157,23 @@ index 49a64e95fd..c4335a427d 100644
  
      if (contextClientVersion == 3 && context == EGL_NO_CONTEXT) {
          // eglGetConfigAttrib indicated we can create GLES 3 context, but we failed, thus
+diff --git a/frameworks/native/libs/renderengine/skia/SkiaRenderEngine.cpp b/frameworks/native/libs/renderengine/skia/SkiaRenderEngine.cpp
+index c4b5c1f629..a55998d065 100644
+--- a/frameworks/native/libs/renderengine/skia/SkiaRenderEngine.cpp
++++ b/frameworks/native/libs/renderengine/skia/SkiaRenderEngine.cpp
+@@ -1635,6 +1635,10 @@ void SkiaRenderEngine::drawLayersInternal(
+ 
+     auto drawFence = sp<Fence>::make(flushAndSubmit(context, dstSurface));
+     trace(drawFence);
++    // Unlock the CPU-raster target before reporting completion to HWC.
++    activeSurface.reset();
++    dstSurface.reset();
++    surfaceTextureRef.reset();
+     FenceTimePtr fenceTime = FenceTime::makeValid(drawFence);
+     for (const auto& layer : layers) {
+         if (FlagManager::getInstance().monitor_buffer_fences()) {
 diff --git a/frameworks/native/libs/renderengine/skia/compat/GaneshBackendTexture.cpp b/frameworks/native/libs/renderengine/skia/compat/GaneshBackendTexture.cpp
-index 2927437524..1f9dc12769 100644
+index 2927437524..c29ce34e2e 100644
 --- a/frameworks/native/libs/renderengine/skia/compat/GaneshBackendTexture.cpp
 +++ b/frameworks/native/libs/renderengine/skia/compat/GaneshBackendTexture.cpp
 @@ -19,11 +19,13 @@
@@ -6247,7 +7190,7 @@ index 2927437524..1f9dc12769 100644
  #include <include/gpu/ganesh/vk/GrVkBackendSurface.h>
  #include <include/gpu/ganesh/vk/GrVkTypes.h>
  
-@@ -33,11 +35,17 @@
+@@ -33,15 +35,36 @@
  #include <android/hardware_buffer.h>
  #include <common/trace.h>
  #include <log/log_main.h>
@@ -6260,20 +7203,49 @@ index 2927437524..1f9dc12769 100644
 +namespace {
 +void winqNoopDelete(GrAHardwareBufferUtils::TexImageCtx) {}
 +void winqNoopUpdate(GrAHardwareBufferUtils::TexImageCtx, GrDirectContext*) {}
++
++struct WinqPixelReleaseContext {
++    AHardwareBuffer* buffer;
++    SkiaBackendTexture::TextureReleaseProc releaseProc;
++    SkiaBackendTexture::ReleaseContext releaseContext;
++};
++
++void winqReleasePixels(void*, void* rawContext) {
++    std::unique_ptr<WinqPixelReleaseContext> context(
++            static_cast<WinqPixelReleaseContext*>(rawContext));
++    const int status = AHardwareBuffer_unlock(context->buffer, nullptr);
++    if (status != 0) ALOGE("KikiAOSP: AHardwareBuffer_unlock failed: %d", status);
++    if (context->releaseProc) context->releaseProc(context->releaseContext);
++}
 +}
 +
  GaneshBackendTexture::GaneshBackendTexture(sk_sp<GrDirectContext> grContext,
                                             AHardwareBuffer* buffer, bool isOutputBuffer)
-       : SkiaBackendTexture(isOutputBuffer), mGrContext(grContext) {
-@@ -74,11 +82,41 @@ GaneshBackendTexture::GaneshBackendTexture(sk_sp<GrDirectContext> grContext,
+-      : SkiaBackendTexture(isOutputBuffer), mGrContext(grContext) {
++      : SkiaBackendTexture(isOutputBuffer), mGrContext(grContext), mHardwareBuffer(buffer) {
+     SFTRACE_CALL();
++    AHardwareBuffer_acquire(mHardwareBuffer);
+     AHardwareBuffer_Desc desc;
+     AHardwareBuffer_describe(buffer, &desc);
+ 
+@@ -74,11 +97,50 @@ GaneshBackendTexture::GaneshBackendTexture(sk_sp<GrDirectContext> grContext,
          LOG_ALWAYS_FATAL("Unexpected graphics API %u", static_cast<unsigned>(graphicsApi));
      }
  
++    // Render client targets into the same AHardwareBuffer that HWC scans out.
++    if (isOutputBuffer) {
++        mWinqFallback = true;
++        ALOGI("KikiAOSP: shared CPU raster target %ux%u format=%u usage=%llu", desc.width,
++              desc.height, desc.format, static_cast<unsigned long long>(desc.usage));
++        return;
++    }
++
 +    // The mixed host/guest MVP can expose an AHardwareBuffer that gfxstream
 +    // cannot import as an EGLImage yet. Keep the render thread alive with a
 +    // regular GL texture so SurfaceFlinger can complete its first frame; the
 +    // normal import path remains preferred whenever it succeeds.
-+    if (graphicsApi == GrBackendApi::kOpenGL && desc.width && desc.height) {
++    if (!mBackendTexture.isValid() && graphicsApi == GrBackendApi::kOpenGL && desc.width &&
++        desc.height) {
 +        GLuint texture = 0;
 +        glGenTextures(1, &texture);
 +        glBindTexture(GL_TEXTURE_2D, texture);
@@ -6311,23 +7283,84 @@ index 2927437524..1f9dc12769 100644
      }
  }
  
-@@ -98,6 +136,13 @@ sk_sp<SkImage> GaneshBackendTexture::makeImage(SkAlphaType alphaType, ui::Datasp
+@@ -87,12 +149,44 @@ GaneshBackendTexture::~GaneshBackendTexture() {
+         mDeleteProc(mImageCtx);
+         mBackendTexture = {};
      }
++    if (mHardwareBuffer) AHardwareBuffer_release(mHardwareBuffer);
+ }
  
-     SkColorType colorType = internalColorType();
-+    if (mBackendTexture.width() > 0 && mBackendTexture.height() > 0) {
-+        const int w = mBackendTexture.width();
-+        const int h = mBackendTexture.height();
-+        const auto info = SkImageInfo::MakeN32Premul(w, h);
-+        return SkImages::RasterFromData(info, SkData::MakeZeroInitialized(info.computeMinByteSize()),
-+                                        info.minRowBytes());
+ sk_sp<SkImage> GaneshBackendTexture::makeImage(SkAlphaType alphaType, ui::Dataspace dataspace,
+                                                TextureReleaseProc releaseImageProc,
+                                                ReleaseContext releaseContext,
+                                                ftl::Flags<ColorSpaceOptions> options) {
++    // The QEMU 2D virtio-gpu path shares its layer buffers as dma-bufs. Read
++    // their actual pixels before attempting a GL import: a placeholder image
++    // makes every Android window permanently black even when it is visible.
++    AHardwareBuffer_Desc desc{};
++    AHardwareBuffer_describe(mHardwareBuffer, &desc);
++    if (!isOutputBuffer() && desc.format == AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM &&
++        desc.width > 0 && desc.height > 0 && desc.stride >= desc.width) {
++        void* pixels = nullptr;
++        const int status = AHardwareBuffer_lock(
++                mHardwareBuffer, AHARDWAREBUFFER_USAGE_CPU_READ_OFTEN, -1, nullptr, &pixels);
++        if (status == 0 && pixels != nullptr) {
++            const size_t rowBytes = static_cast<size_t>(desc.stride) * 4;
++            const auto info = SkImageInfo::Make(desc.width, desc.height,
++                                                kRGBA_8888_SkColorType, kPremul_SkAlphaType,
++                                                toSkColorSpace(dataspace, options));
++            auto data = SkData::MakeWithCopy(pixels, rowBytes * desc.height);
++            const auto* bytes = static_cast<const uint8_t*>(pixels);
++            ALOGI("KikiAOSP: copied real layer pixels %ux%u first=%02x%02x%02x%02x",
++                  desc.width, desc.height, bytes[0], bytes[1], bytes[2], bytes[3]);
++            AHardwareBuffer_unlock(mHardwareBuffer, nullptr);
++            auto image = SkImages::RasterFromData(info, data, rowBytes);
++            if (image) {
++                if (releaseImageProc) releaseImageProc(releaseContext);
++                return image;
++            }
++        } else {
++            ALOGE("KikiAOSP: layer CPU read failed status=%d pixels=%p usage=%llu", status,
++                  pixels, static_cast<unsigned long long>(desc.usage));
++            if (status == 0) AHardwareBuffer_unlock(mHardwareBuffer, nullptr);
++        }
 +    }
-     if (alphaType == kUnknown_SkAlphaType) {
-         switch (colorType) {
-             case kRGBA_8888_SkColorType:
-@@ -135,6 +180,18 @@ sk_sp<SkSurface> GaneshBackendTexture::makeSurface(ui::Dataspace dataspace,
+     if (mBackendTexture.isValid()) {
+         mUpdateProc(mImageCtx, mGrContext.get());
+     }
+@@ -134,7 +228,48 @@ sk_sp<SkSurface> GaneshBackendTexture::makeSurface(ui::Dataspace dataspace,
+                                                    TextureReleaseProc releaseSurfaceProc,
                                                     ReleaseContext releaseContext,
                                                     ftl::Flags<ColorSpaceOptions> options) {
++    if (isOutputBuffer()) {
++        AHardwareBuffer_Desc desc{};
++        AHardwareBuffer_describe(mHardwareBuffer, &desc);
++        void* pixels = nullptr;
++        const int lockStatus = AHardwareBuffer_lock(
++                mHardwareBuffer, AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN, -1, nullptr, &pixels);
++        if (lockStatus == 0 && pixels && desc.format == AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM) {
++            const auto info = SkImageInfo::Make(desc.width, desc.height,
++                                                kRGBA_8888_SkColorType, kPremul_SkAlphaType,
++                                                toSkColorSpace(dataspace, options));
++            auto* pixelReleaseContext = new WinqPixelReleaseContext{
++                    mHardwareBuffer, releaseSurfaceProc, releaseContext};
++            auto surface = SkSurfaces::WrapPixels(info, pixels,
++                                                   static_cast<size_t>(desc.stride) * 4,
++                                                   winqReleasePixels, pixelReleaseContext);
++            if (surface) {
++                ALOGI("KikiAOSP: mapped shared client target for raster stride=%u", desc.stride);
++                return surface;
++            }
++            ALOGE("KikiAOSP: WrapPixels rejected client target");
++            winqReleasePixels(pixels, pixelReleaseContext);
++        } else {
++            ALOGE("KikiAOSP: client target CPU lock failed status=%d pixels=%p format=%u usage=%llu",
++                  lockStatus, pixels, desc.format, static_cast<unsigned long long>(desc.usage));
++            if (lockStatus == 0) AHardwareBuffer_unlock(mHardwareBuffer, nullptr);
++            if (releaseSurfaceProc) releaseSurfaceProc(releaseContext);
++        }
++        return SkSurfaces::Raster(SkImageInfo::MakeN32Premul(desc.width, desc.height));
++    }
      const SkColorType colorType = internalColorType();
 +    if (mWinqFallback || colorType == kRGBA_8888_SkColorType) {
 +        const auto size = mBackendTexture.dimensions();
@@ -6345,10 +7378,24 @@ index 2927437524..1f9dc12769 100644
              SkSurfaces::WrapBackendTexture(mGrContext.get(), mBackendTexture,
                                             kTopLeft_GrSurfaceOrigin, 0, colorType,
 diff --git a/frameworks/native/libs/renderengine/skia/compat/GaneshBackendTexture.h b/frameworks/native/libs/renderengine/skia/compat/GaneshBackendTexture.h
-index f1a56a2260..b53e40a976 100644
+index f1a56a2260..c6c2a94ac3 100644
 --- a/frameworks/native/libs/renderengine/skia/compat/GaneshBackendTexture.h
 +++ b/frameworks/native/libs/renderengine/skia/compat/GaneshBackendTexture.h
-@@ -61,6 +61,7 @@ private:
+@@ -24,6 +24,7 @@
+ #include <include/gpu/ganesh/GrDirectContext.h>
+ 
+ #include <android-base/macros.h>
++#include <android/hardware_buffer.h>
+ 
+ namespace android::renderengine::skia {
+ 
+@@ -56,11 +57,13 @@ private:
+                          SkAlphaType alphaType);
+ 
+     const sk_sp<GrDirectContext> mGrContext;
++    AHardwareBuffer* mHardwareBuffer = nullptr;
+     GrBackendTexture mBackendTexture;
+     GrAHardwareBufferUtils::DeleteImageProc mDeleteProc;
      GrAHardwareBufferUtils::UpdateImageProc mUpdateProc;
      GrAHardwareBufferUtils::TexImageCtx mImageCtx;
      SkColorType mColorType = kUnknown_SkColorType;
@@ -6589,6 +7636,82 @@ index e07d499fb2..1ffcf2aead 100644
      if (!status.isOk()) {
          ALOGE("registerCallback failed %s", status.getDescription().c_str());
      }
+diff --git a/frameworks/native/services/surfaceflinger/DisplayHardware/FramebufferSurface.cpp b/frameworks/native/services/surfaceflinger/DisplayHardware/FramebufferSurface.cpp
+index f21b96454a..3414e30430 100644
+--- a/frameworks/native/services/surfaceflinger/DisplayHardware/FramebufferSurface.cpp
++++ b/frameworks/native/services/surfaceflinger/DisplayHardware/FramebufferSurface.cpp
+@@ -55,7 +55,8 @@ FramebufferSurface::FramebufferSurface(HWComposer& hwc, PhysicalDisplayId displa
+     ALOGV("Creating for display %s", to_string(displayId).c_str());
+ 
+     std::tie(mRendererConsumer, mRendererSurface) = BufferItemConsumer::create(
+-            GRALLOC_USAGE_HW_FB | GRALLOC_USAGE_HW_RENDER | GRALLOC_USAGE_HW_COMPOSER);
++            GRALLOC_USAGE_HW_FB | GRALLOC_USAGE_HW_RENDER | GRALLOC_USAGE_HW_COMPOSER |
++            GRALLOC_USAGE_SW_WRITE_OFTEN);
+ 
+     mRendererConsumer->setName(String8("FramebufferSurface"));
+     mRendererConsumer->setDefaultBufferSize(mLimitedSize.width, mLimitedSize.height);
+diff --git a/frameworks/native/services/surfaceflinger/FrontEnd/LayerHandle.cpp b/frameworks/native/services/surfaceflinger/FrontEnd/LayerHandle.cpp
+index ffd51a40bb..b55490cd3f 100644
+--- a/frameworks/native/services/surfaceflinger/FrontEnd/LayerHandle.cpp
++++ b/frameworks/native/services/surfaceflinger/FrontEnd/LayerHandle.cpp
+@@ -15,7 +15,10 @@
+  */
+ 
+ #include "LayerHandle.h"
++#include <atomic>
+ #include <cstdint>
++#include <binder/Parcel.h>
++#include <utils/String8.h>
+ #include "Layer.h"
+ #include "LayerCreationArgs.h"
+ #include "SurfaceFlinger.h"
+@@ -24,9 +27,20 @@ namespace android::surfaceflinger {
+ 
+ LayerHandle::LayerHandle(const sp<android::SurfaceFlinger>& flinger,
+                          const sp<android::Layer>& layer)
+-      : mFlinger(flinger), mLayer(layer), mLayerId(static_cast<uint32_t>(layer->getSequence())) {}
++      : mFlinger(flinger), mLayer(layer), mLayerId(static_cast<uint32_t>(layer->getSequence())) {
++    static std::atomic<uint32_t> createLogCount{0};
++    if (createLogCount.fetch_add(1) < 24) {
++        ALOGE("Kiki LayerHandle constructed this=%p id=%u layer=%p", this, mLayerId,
++              mLayer.get());
++    }
++}
+ 
+ LayerHandle::~LayerHandle() {
++    static std::atomic<uint32_t> destroyLogCount{0};
++    if (destroyLogCount.fetch_add(1) < 24) {
++        ALOGE("Kiki LayerHandle destroyed this=%p id=%u layer=%p", this, mLayerId,
++              mLayer.get());
++    }
+     if (mFlinger) {
+         mFlinger->onHandleDestroyed(mLayer, mLayerId);
+     }
+@@ -41,7 +55,23 @@ sp<LayerHandle> LayerHandle::fromIBinder(const sp<IBinder>& binder) {
+ 
+     BBinder* b = binder->localBinder();
+     if (b == nullptr || b->getInterfaceDescriptor() != LayerHandle::kDescriptor) {
+-        ALOGD("handle does not have a valid descriptor");
++        static std::atomic<uint32_t> invalidHandleLogCount{0};
++        if (invalidHandleLogCount.fetch_add(1) < 20) {
++            Parcel request;
++            request.markForBinder(binder);
++            Parcel reply;
++            const status_t descriptorStatus =
++                    binder->transact(IBinder::INTERFACE_TRANSACTION, request, &reply);
++            String16 descriptor;
++            if (descriptorStatus == NO_ERROR) reply.readString16(&descriptor);
++            const String8 actualDescriptor(descriptor);
++            const String8 expectedDescriptor(LayerHandle::kDescriptor);
++            const status_t pingStatus = binder->pingBinder();
++            ALOGE("Kiki LayerHandle rejected binder=%p local=%p alive=%d descriptorStatus=%d "
++                  "pingStatus=%d descriptor='%s' expected='%s'",
++                  binder.get(), b, binder->isBinderAlive(), descriptorStatus, pingStatus,
++                  actualDescriptor.c_str(), expectedDescriptor.c_str());
++        }
+         return nullptr;
+     }
+ 
 diff --git a/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp b/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
 index 7565080d29..f801b0994e 100644
 --- a/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
@@ -6931,7 +8054,6 @@ index 48e2586132..89a117ae26 100644
      if (err != android::OK) {
          ALOGE("native_window_api_connect_with_listener() failed: %s (%d)",
                strerror(-err), err);
-
 diff --git a/hardware/google/gfxstream/guest/OpenglSystemCommon/HostConnection.cpp b/hardware/google/gfxstream/guest/OpenglSystemCommon/HostConnection.cpp
 index 18d472196..f7cb4c3a5 100644
 --- a/hardware/google/gfxstream/guest/OpenglSystemCommon/HostConnection.cpp
@@ -7280,7 +8402,6 @@ index 6c86e59b6..72f54aeab 100644
  	return retval;
  }
  
-
 diff --git a/hardware/interfaces/boot/aidl/default/BootControl.cpp b/hardware/interfaces/boot/aidl/default/BootControl.cpp
 index b73c94dbfc..1957c6c53a 100644
 --- a/hardware/interfaces/boot/aidl/default/BootControl.cpp
@@ -7294,7 +8415,6 @@ index b73c94dbfc..1957c6c53a 100644
  }
  
  ScopedAStatus BootControl::getActiveBootSlot(int32_t* _aidl_return) {
-
 diff --git a/libcore/dalvik/src/main/java/dalvik/system/ZygoteHooks.java b/libcore/dalvik/src/main/java/dalvik/system/ZygoteHooks.java
 index 2bc3048c695..d108f1a1be0 100644
 --- a/libcore/dalvik/src/main/java/dalvik/system/ZygoteHooks.java
@@ -7388,7 +8508,6 @@ index a1e95fd7b0f..d9ef8b2887b 100644
    register_java_lang_System(env);
  
    // Initialize the rest in the order in which they appear in Android.bp .
-
 diff --git a/libnativehelper/JniInvocation.c b/libnativehelper/JniInvocation.c
 index 17d0dfd..6ac953c 100644
 --- a/libnativehelper/JniInvocation.c
@@ -7431,7 +8550,6 @@ index 17d0dfd..6ac953c 100644
        return false;
      }
    }
-
 diff --git a/packages/modules/StatsD/framework/java/android/util/StatsLog.java b/packages/modules/StatsD/framework/java/android/util/StatsLog.java
 index a765aafd..0afa8ae4 100644
 --- a/packages/modules/StatsD/framework/java/android/util/StatsLog.java
@@ -7468,7 +8586,6 @@ index a765aafd..0afa8ae4 100644
          writeImpl(statsEvent.getBytes(), statsEvent.getNumBytes(), statsEvent.getAtomId());
          statsEvent.release();
      }
-
 diff --git a/packages/modules/adb/daemon/main.cpp b/packages/modules/adb/daemon/main.cpp
 index 3d3f3024..10e1fe13 100644
 --- a/packages/modules/adb/daemon/main.cpp
@@ -7552,7 +8669,6 @@ index 3ae868c9..eaf1bc67 100644
  
      host_supported: true,
      compile_multilib: "both",
-
 diff --git a/prebuilts/abi-dumps/platform/current/64/arm/source-based/libadbconnection_client.so.lsdump b/prebuilts/abi-dumps/platform/current/64/arm/source-based/libadbconnection_client.so.lsdump
 deleted file mode 100644
 index 238c91b..0000000
@@ -12353,7 +13469,6 @@ index cb00083..0000000
 - ],
 - "rvalue_reference_types" : []
 -}
-
 diff --git a/system/apex/apexd/apexd.rc b/system/apex/apexd/apexd.rc
 index 2dcc1f50..a1f8b145 100644
 --- a/system/apex/apexd/apexd.rc
@@ -12376,7 +13491,6 @@ index 2dcc1f50..a1f8b145 100644
      # CAP_SYS_ADMIN is required to access device-mapper and to use mount syscall
      # apexd-bootstrap doesn't manage apexdata snapshot & restore, hence no need for other capabilities.
      capabilities SYS_ADMIN MKNOD
-
 diff --git a/system/core/init/Android.bp b/system/core/init/Android.bp
 index 2783c9b64..655f2d7c6 100644
 --- a/system/core/init/Android.bp
@@ -12445,7 +13559,7 @@ index 8b9469906..5ba5f30f4 100644
  }
  
 diff --git a/system/core/init/init.cpp b/system/core/init/init.cpp
-index aec2688fc..15266c151 100644
+index aec2688fc..796225162 100644
 --- a/system/core/init/init.cpp
 +++ b/system/core/init/init.cpp
 @@ -492,7 +492,7 @@ static Result<void> UpdateApexLinkerConfig(const std::string& apex_name) {
@@ -12474,51 +13588,16 @@ index aec2688fc..15266c151 100644
  static Result<void> SetupCgroupsAction(const BuiltinArguments&) {
      if (!CgroupsAvailable()) {
          LOG(INFO) << "Cgroups support in kernel is not enabled";
-@@ -883,16 +879,18 @@ static void UmountSecondStageRes() {
+@@ -883,7 +879,7 @@ static void UmountSecondStageRes() {
  
  static void MountExtraFilesystems() {
  #define CHECKCALL(x) \
 -    if ((x) != 0) PLOG(FATAL) << #x " failed.";
 +    if ((x) != 0) PLOG(ERROR) << #x " failed.";
  
--    // /apex is used to mount APEXes
--    CHECKCALL(mount("tmpfs", "/apex", "tmpfs", MS_NOEXEC | MS_NOSUID | MS_NODEV,
--                    "mode=0755,uid=0,gid=0"));
--
--    if (NeedsTwoMountNamespaces()) {
--        // /bootstrap-apex is used to mount "bootstrap" APEXes.
--        CHECKCALL(mount("tmpfs", "/bootstrap-apex", "tmpfs", MS_NOEXEC | MS_NOSUID | MS_NODEV,
-+    // KikiAOSP diagnostic: preserve a pre-extracted runtime APEX in the system image.
-+    [[maybe_unused]] const bool kikiaosp_preextracted_runtime = true;
-+    if (!kikiaosp_preextracted_runtime) {
-+        CHECKCALL(mount("tmpfs", "/apex", "tmpfs", MS_NOEXEC | MS_NOSUID | MS_NODEV,
-                         "mode=0755,uid=0,gid=0"));
-+
-+        if (NeedsTwoMountNamespaces()) {
-+            CHECKCALL(mount("tmpfs", "/bootstrap-apex", "tmpfs", MS_NOEXEC | MS_NOSUID | MS_NODEV,
-+                            "mode=0755,uid=0,gid=0"));
-+        }
-     }
- 
-     // /linkerconfig is used to keep generated linker configuration
-@@ -1136,9 +1134,13 @@ int SecondStageMain(int argc, char** argv) {
-     // Mount extra filesystems required during second stage init
-     MountExtraFilesystems();
- 
--    // Now set up SELinux for second stage.
--    SelabelInitialize();
--    SelinuxRestoreContext();
-+    // Kiki kernel-test is intentionally policy-free; do not require labels or a policy store.
-+    if (false) {
-+        SelabelInitialize();
-+        SelinuxRestoreContext();
-+    } else {
-+        LOG(INFO) << "Kiki kernel-test: bypassing second-stage SELinux labeling";
-+    }
- 
-     Epoll epoll;
-     if (auto result = epoll.Open(); !result.ok()) {
-@@ -1196,7 +1198,7 @@ int SecondStageMain(int argc, char** argv) {
+     // /apex is used to mount APEXes
+     CHECKCALL(mount("tmpfs", "/apex", "tmpfs", MS_NOEXEC | MS_NOSUID | MS_NODEV,
+@@ -1196,7 +1192,7 @@ int SecondStageMain(int argc, char** argv) {
      Action::set_function_map(&function_map);
  
      if (!SetupMountNamespaces()) {
@@ -12546,106 +13625,147 @@ index bb09f3073..fe7b4228e 100644
  #if __has_feature(address_sanitizer)
      __asan_set_error_report_callback(AsanReportCallback);
  #elif __has_feature(hwaddress_sanitizer)
-diff --git a/system/core/init/property_service.cpp b/system/core/init/property_service.cpp
-index e6fffc4da..e96840581 100644
---- a/system/core/init/property_service.cpp
-+++ b/system/core/init/property_service.cpp
-@@ -170,9 +170,10 @@ static bool CheckMacPerms(const std::string& name, const char* target_context,
-     audit_data.name = name.c_str();
-     audit_data.cr = &cr;
+diff --git a/system/core/init/mount_namespace.cpp b/system/core/init/mount_namespace.cpp
+index 36c0fd73a..a9cba27fb 100644
+--- a/system/core/init/mount_namespace.cpp
++++ b/system/core/init/mount_namespace.cpp
+@@ -16,8 +16,12 @@
  
--    auto lock = std::lock_guard{selinux_check_access_lock};
--    return selinux_check_access(source_context, target_context, "property_service", "set",
--                                &audit_data) == 0;
-+    // Kiki's kernel-test image intentionally runs without an enforcing SELinux
-+    // policy. Allow property updates so binder service readiness and graphics
-+    // bring-up do not deadlock on policy-only checks.
-+    return true;
+ #include "mount_namespace.h"
+ 
++#include <dirent.h>
+ #include <sys/mount.h>
++#include <sys/vfs.h>
++#include <unistd.h>
+ 
++#include <cerrno>
+ #include <string>
+ #include <vector>
+ 
+@@ -72,6 +76,57 @@ static std::string GetMountNamespaceId() {
+     return ret;
  }
  
- void NotifyPropertyChange(const std::string& name, const std::string& value) {
++static void LogSelinuxMountView(const char* stage) {
++    struct statfs mount_stat {};
++    int statfs_rc = statfs("/sys/fs/selinux", &mount_stat);
++    int statfs_errno = statfs_rc < 0 ? errno : 0;
++    int access_rc = access("/sys/fs/selinux/access", F_OK);
++    int access_errno = access_rc < 0 ? errno : 0;
++    std::string mount_namespace;
++    if (!android::base::Readlink("/proc/thread-self/ns/mnt", &mount_namespace)) {
++        mount_namespace = "(unavailable)";
++    }
++    LOG(INFO) << "KIKI-MNTNS stage=" << stage << " mount_ns=" << mount_namespace
++              << " selinuxfs_statfs_rc=" << statfs_rc << " errno=" << statfs_errno
++              << " f_type=" << (statfs_rc == 0 ? mount_stat.f_type : 0)
++              << " access_rc=" << access_rc << " access_errno=" << access_errno;
++}
++
++static void LogInitThreadSelinuxMountViews(const char* stage) {
++    DIR* tasks = opendir("/proc/1/task");
++    if (tasks == nullptr) {
++        PLOG(ERROR) << "KIKI-MNTNS-THREAD cannot enumerate init tasks at " << stage;
++        return;
++    }
++
++    while (dirent* task = readdir(tasks)) {
++        if (task->d_name[0] < '0' || task->d_name[0] > '9') continue;
++        const std::string task_path = std::string("/proc/1/task/") + task->d_name;
++        const std::string selinux_path = task_path + "/root/sys/fs/selinux";
++        std::string mount_namespace;
++        const bool namespace_ok =
++                android::base::Readlink(task_path + "/ns/mnt", &mount_namespace);
++        const int namespace_errno = namespace_ok ? 0 : errno;
++        std::string root;
++        const bool root_ok = android::base::Readlink(task_path + "/root", &root);
++        const int root_errno = root_ok ? 0 : errno;
++        struct statfs mount_stat {};
++        const int statfs_rc = statfs(selinux_path.c_str(), &mount_stat);
++        const int statfs_errno = statfs_rc < 0 ? errno : 0;
++        const int access_rc = access((selinux_path + "/access").c_str(), F_OK);
++        const int access_errno = access_rc < 0 ? errno : 0;
++        LOG(INFO) << "KIKI-MNTNS-THREAD stage=" << stage << " tid=" << task->d_name
++                  << " mount_ns=" << (namespace_ok ? mount_namespace : "(unavailable)")
++                  << " ns_errno=" << namespace_errno
++                  << " root=" << (root_ok ? root : "(unavailable)")
++                  << " root_errno=" << root_errno << " selinuxfs_rc=" << statfs_rc
++                  << " selinuxfs_errno=" << statfs_errno
++                  << " f_type=" << (statfs_rc == 0 ? mount_stat.f_type : 0)
++                  << " access_rc=" << access_rc << " access_errno=" << access_errno;
++    }
++    closedir(tasks);
++}
++
+ [[clang::no_destroy]] static android::base::unique_fd bootstrap_ns_fd;
+ [[clang::no_destroy]] static android::base::unique_fd default_ns_fd;
+ 
+@@ -89,6 +144,10 @@ bool NeedsTwoMountNamespaces() {
+         // devices.
+         if (IsMicrodroid()) return false;
+ 
++        // Kiki Linux 7.3 uses PID 1's pre-unshare fs_struct as nullfs for other threads.
++        if (GetBoolProperty("ro.kikiaosp.single_mount_namespace", false)) return false;
++
++
+         if constexpr (com::android::apex::flags::mount_before_data()) {
+             // If apexd can mount APEXes before the data partition is ready, a single mount
+             // namespace is enough.
+@@ -103,6 +162,7 @@ bool NeedsTwoMountNamespaces() {
+ }
+ 
+ bool SetupMountNamespaces() {
++    LogSelinuxMountView("setup-enter");
+     // Set the propagation type of / as shared so that any mounting event (e.g.
+     // /data) is by default visible to all processes. When private mounting is
+     // needed for /foo/bar, then we will make /foo/bar as a mount point (by
+@@ -161,6 +221,8 @@ bool SetupMountNamespaces() {
+ 
+     bootstrap_ns_fd.reset(OpenMountNamespace());
+     bootstrap_ns_id = GetMountNamespaceId();
++    LogSelinuxMountView("before-unshare");
++    LogInitThreadSelinuxMountViews("before-unshare");
+ 
+     // When APEXes are updatable (e.g. not-flattened), we create separate mount
+     // namespaces for processes that are started before and after the APEX is
+@@ -175,6 +237,7 @@ bool SetupMountNamespaces() {
+             PLOG(ERROR) << "Cannot create mount namespace";
+             return false;
+         }
++        LogSelinuxMountView("after-unshare");
+         default_ns_fd.reset(OpenMountNamespace());
+         default_ns_id = GetMountNamespaceId();
+ 
+@@ -182,6 +245,8 @@ bool SetupMountNamespaces() {
+             PLOG(ERROR) << "Cannot switch back to bootstrap mount namespace";
+             return false;
+         }
++        LogSelinuxMountView("after-setns-bootstrap");
++        LogInitThreadSelinuxMountViews("after-setns-bootstrap");
+ 
+         // Some components (e.g. servicemanager) need to access bootstrap
+         // APEXes from the default mount namespace. To achieve that, we bind-mount
 diff --git a/system/core/init/selinux.cpp b/system/core/init/selinux.cpp
-index 4baf9a4fe..5b272c64b 100644
+index 4baf9a4fe..87d68699c 100644
 --- a/system/core/init/selinux.cpp
 +++ b/system/core/init/selinux.cpp
-@@ -429,7 +429,7 @@ void ReadPolicy(std::string* policy) {
-     }
- }
- 
--void SelinuxSetEnforcement() {
-+[[maybe_unused]] void SelinuxSetEnforcement() {
+@@ -432,12 +432,16 @@ void ReadPolicy(std::string* policy) {
+ void SelinuxSetEnforcement() {
      bool kernel_enforcing = (security_getenforce() == 1);
      bool is_enforcing = IsEnforcing();
++    LOG(INFO) << "KIKI-SELINUX-DIAG init allow_permissive=" << ALLOW_PERMISSIVE_SELINUX
++              << " kernel_before=" << kernel_enforcing
++              << " requested_enforcing=" << is_enforcing;
      if (kernel_enforcing != is_enforcing) {
-@@ -783,62 +783,17 @@ void SetupOverlays() {}
- #endif
- 
- int SetupSelinux(char** argv) {
--    SetStdioToDevNull(argv);
--    InitKernelLogging(argv);
--
--    if (REBOOT_BOOTLOADER_ON_PANIC && !AttemptingToBootNewSlot()) {
--        InstallRebootSignalHandlers();
--    }
--
--    boot_clock::time_point start_time = boot_clock::now();
--
--    SelinuxSetupKernelLogging();
--
--    // Test to see if we should use overlays, and if so remount tmpfs before selinux will block
--    bool use_overlays = EarlySetupOverlays();
--
--    // TODO(b/287206497): refactor into different headers to only include what we need.
--    if (IsMicrodroid()) {
--        LoadSelinuxPolicyMicrodroid();
--    } else {
--        LoadSelinuxPolicyAndroid();
--    }
--
--    SelinuxSetEnforcement();
--
--    if (IsMicrodroid() && android::virtualization::IsOpenDiceChangesFlagEnabled()) {
--        // We run restorecon of /microdroid_resources while we are still in kernel context to avoid
--        // granting init `tmpfs:file relabelfrom` capability.
--        const int flags = SELINUX_ANDROID_RESTORECON_RECURSE;
--        if (selinux_android_restorecon("/microdroid_resources", flags) == -1) {
--            PLOG(FATAL) << "restorecon of /microdroid_resources failed";
--        }
--    }
--
--    // We're in the kernel domain and want to transition to the init domain.  File systems that
--    // store SELabels in their xattrs, such as ext4 do not need an explicit restorecon here,
--    // but other file systems do.  In particular, this is needed for ramdisks such as the
--    // recovery image for A/B devices.
--    if (selinux_android_restorecon("/system/bin/init", 0) == -1) {
--        PLOG(FATAL) << "restorecon failed of /system/bin/init failed";
--    }
--
--    setenv(kEnvSelinuxStartedAt, std::to_string(start_time.time_since_epoch().count()).c_str(), 1);
--
--    // SetupOverlays does not return if overlays exist, instead it execs overlay_remounter
--    // which then execs second stage init
--    if (use_overlays) SetupOverlays();
--
-+    const char probe[] = "KIKI SETUP_SELINUX ENTER\n";
-+    write(STDERR_FILENO, probe, sizeof(probe) - 1);
-     const char* path = "/system/bin/init";
-     const char* args[] = {path, "second_stage", nullptr};
-     execv(path, const_cast<char**>(args));
--
--    // execv() only returns if an error happened, in which case we
--    // panic and never return from this function.
--    PLOG(FATAL) << "execv(\"" << path << "\") failed";
--
-+    const char fail[] = "KIKI SETUP_SELINUX EXEC_FAIL\n";
-+    write(STDERR_FILENO, fail, sizeof(fail) - 1);
-+    PLOG(FATAL) << "execv(\"" << path << "\") failed after Kiki SELinux bypass";
-     return 1;
+         if (security_setenforce(is_enforcing)) {
+             PLOG(FATAL) << "security_setenforce(" << (is_enforcing ? "true" : "false")
+                         << ") failed";
+         }
+     }
++    LOG(INFO) << "KIKI-SELINUX-DIAG init kernel_after=" << security_getenforce();
  }
  
-+
- }  // namespace init
- }  // namespace android
+ constexpr size_t kKlogMessageSize = 1024;
 diff --git a/system/core/init/service.cpp b/system/core/init/service.cpp
 index d38b47ab2..d101fa584 100644
 --- a/system/core/init/service.cpp
@@ -12728,82 +13848,51 @@ index 27c45069e..3191b074d 100644
 +    filename: "kiki-mknod",
 +}
 diff --git a/system/core/rootdir/etc/linker.config.json b/system/core/rootdir/etc/linker.config.json
-index 12e61b866..3d4bb892b 100644
+index 12e61b866..6860848a0 100644
 --- a/system/core/rootdir/etc/linker.config.json
 +++ b/system/core/rootdir/etc/linker.config.json
-@@ -1,29 +1,16 @@
- {
-   "requireLibs": [
--    "libandroidicu.so",
--    "libdexfile.so",
-+    // "libandroidicu.so",
+@@ -4,7 +4,10 @@
+     "libdexfile.so",
      "libdexfiled.so",
--    "libicu.so",
+     "libicu.so",
++    // Zygote loads this JNI library from the i18n APEX.
++    "libicu_jni.so",
      "libjdwp.so",
--    "libnativebridge.so",
--    "libnativehelper.so",
--    "libnativeloader.so",
--    "libsigchain.so",
--    // TODO(b/120786417 or b/134659294): libicuuc.so
--    // and libicui18n.so are kept for app compat.
--    "libicui18n.so",
--    "libicuuc.so",
-     // resolv
--    "libnetd_resolv.so",
++    "libart.so",
+     "libnativebridge.so",
+     "libnativehelper.so",
+     "libnativeloader.so",
+@@ -17,6 +20,8 @@
+     "libnetd_resolv.so",
      // netd
--    "libnetd_updatable.so",
-+    // "libicui18n.so",
+     "libnetd_updatable.so",
++    // Platform libandroid.so needs this library from the tethering APEX.
++    "libcom.android.tethering.connectivity_native.so",
      // statsd
--    "libstatspull.so",
--    "libstatssocket.so",
-     // adbd
--    "libadb_pairing_auth.so",
--    "libadb_pairing_connection.so",
--    "libadb_pairing_server.so",
-+    // "libadb_pairing_auth.so",
-+    // "libadb_pairing_connection.so",
-+    // "libadb_pairing_server.so",
-     // media.swcodec
-     "libcom.android.media.swcodec.apexcodecs.so",
-     // npumanager
+     "libstatspull.so",
+     "libstatssocket.so",
 diff --git a/system/core/rootdir/init.rc b/system/core/rootdir/init.rc
-index 5e26d127a..3c8dff6e6 100644
+index 5e26d127a..d162a802a 100644
 --- a/system/core/rootdir/init.rc
 +++ b/system/core/rootdir/init.rc
-@@ -13,6 +13,11 @@ import /system/etc/init/hw/init.${ro.zygote}.rc
+@@ -13,6 +13,8 @@ import /system/etc/init/hw/init.${ro.zygote}.rc
  
  # Cgroups are mounted right before early-init using list from /etc/cgroups.json
  on early-init
 +    mount tmpfs tmpfs /metadata mode=0755,uid=0,gid=0
-+    disable keystore2
-+    stop keystore2
-+    disable rpmb_mock_test_system
 +    setprop keystore.module_hash.sent true
      # Allow bootchart to capture from the beginning of second-stage init.
      mkdir /dev/bootchart 0755 root root
      bootchart start
-@@ -73,6 +78,9 @@ on early-init
- 
-     # Mount bootstrap linker configuration as current
-     mount none /linkerconfig/bootstrap /linkerconfig bind rec
-+    # KikiAOSP: apexd needs a writable shared mountpoint for APEX instances.
-+    mkdir /apex 0755 root root
-+    mount tmpfs tmpfs /apex nodev noexec nosuid mode=0755
- 
-     start ueventd
- 
-@@ -90,6 +98,10 @@ on early-init
+@@ -90,6 +92,7 @@ on early-init
      # the libraries are available to the processes started after this statement.
      exec_start apexd-bootstrap
      perform_apex_config
-+    # KikiAOSP test: make static linker config available before APEX linkerconfig remount.
-+    copy /system/etc/ld.config.kiki.txt /linkerconfig/ld.config.txt
-+    chmod 644 /linkerconfig/ld.config.txt
-+    setprop apexd.status activated
++    setprop kikiaosp.ignore_apex_versions 1
  
      # These must already exist by the time boringssl_self_test32 / boringssl_self_test64 run.
      mkdir /dev/boringssl 0755 root root
-@@ -477,28 +489,24 @@ on init
+@@ -477,28 +480,24 @@ on init
  import /system/etc/init/hw/init.boringssl.${ro.zygote}.rc
  
  service boringssl_self_test32 /system/bin/boringssl_self_test32
@@ -12832,16 +13921,7 @@ index 5e26d127a..3c8dff6e6 100644
      stdio_to_kmsg
      # Explicitly specify that boringssl_self_test_apex64 doesn't require any capabilities
      capabilities
-@@ -537,7 +545,7 @@ on late-init
-     trigger post-fs-data
- 
-     # Should be before netd, but after apex, properties and logging is available.
--    trigger load-bpf-programs
-+    # KikiAOSP test: no tethering APEX bpfloader in minimal guest; skip load-bpf-programs.
- 
-     # Now we can start zygote.
-     trigger zygote-start
-@@ -663,7 +671,7 @@ on property:ro.product.cpu.abilist64=* && property:bootreceiver.enable=1
+@@ -663,7 +662,7 @@ on property:ro.product.cpu.abilist64=* && property:bootreceiver.enable=1
  on post-fs-data
  
      # Start checkpoint before we touch data
@@ -12850,7 +13930,7 @@ index 5e26d127a..3c8dff6e6 100644
  
      # We chown/chmod /data again so because mount is run as root + defaults
      chown system system /data
-@@ -672,7 +680,7 @@ on post-fs-data
+@@ -672,7 +671,7 @@ on post-fs-data
      restorecon /data
  
      # Make sure we have the device encryption key.
@@ -12859,7 +13939,7 @@ index 5e26d127a..3c8dff6e6 100644
  
      # Start bootcharting as soon as possible after the data partition is
      # mounted to collect more data.
-@@ -712,7 +720,7 @@ on post-fs-data
+@@ -712,7 +711,7 @@ on post-fs-data
      # we can tell keystore to stop allowing use of early-boot keys,
      # and access its database for the first time to support creation and
      # use of MAX_BOOT_LEVEL keys.
@@ -12868,7 +13948,7 @@ index 5e26d127a..3c8dff6e6 100644
  
      # Multi-installed APEXes are selected using persist props.
      # Load persist properties and override properties (if enabled) from /data,
-@@ -749,6 +757,7 @@ on post-fs-data
+@@ -749,6 +748,7 @@ on post-fs-data
      mkdir /data/apex/ota_reserved 0700 root system encryption=Require
      setprop apexd.status ""
      restart apexd
@@ -12876,7 +13956,7 @@ index 5e26d127a..3c8dff6e6 100644
  
      # create rest of basic filesystem structure
      mkdir /data/misc/recovery 0770 system log
-@@ -763,6 +772,7 @@ on post-fs-data
+@@ -763,6 +763,7 @@ on post-fs-data
      chmod 0440 /data/misc/recovery/proc/version.1
      chown system log /data/misc/recovery/proc/version.1
      copy /proc/version /data/misc/recovery/proc/version
@@ -12884,7 +13964,7 @@ index 5e26d127a..3c8dff6e6 100644
      chmod 0440 /data/misc/recovery/proc/version
      chown system log /data/misc/recovery/proc/version
      mkdir /data/misc/bluedroid 02770 bluetooth bluetooth
-@@ -833,6 +843,7 @@ on post-fs-data
+@@ -833,6 +834,7 @@ on post-fs-data
      mkdir /data/misc/odsign/metrics 0770 root system
      # directory used for connectivity blob store.
      mkdir /data/misc/connectivityblobdb 0770 system system
@@ -12892,7 +13972,7 @@ index 5e26d127a..3c8dff6e6 100644
  
      # Setup SurfaceFlinger shader caching
      mkdir /data/misc/surfaceflinger 0700 system system
-@@ -911,6 +922,7 @@ on post-fs-data
+@@ -911,6 +913,7 @@ on post-fs-data
  
      # Create all remaining /data root dirs so that they are made through init
      # and get proper encryption policy installed
@@ -12900,7 +13980,7 @@ index 5e26d127a..3c8dff6e6 100644
      mkdir /data/backup 0700 system system encryption=Require
      mkdir /data/ss 0700 system system encryption=Require
  
-@@ -957,8 +969,8 @@ on post-fs-data
+@@ -957,8 +960,8 @@ on post-fs-data
      # Set the casefold flag on /data/media.  For upgrades, a restorecon can be
      # needed first to relabel the directory from media_rw_data_file.
      restorecon /data/media
@@ -12911,7 +13991,7 @@ index 5e26d127a..3c8dff6e6 100644
  
  
      # A tmpfs directory, which will contain all apps and sdk sandbox CE and DE
-@@ -990,6 +1002,7 @@ on post-fs-data
+@@ -990,6 +993,7 @@ on post-fs-data
      mount none /data/misc_de /data_mirror/misc_de/null bind rec
  
      # Also bind mount for the storage area directory (minus the volume ID)
@@ -12919,28 +13999,27 @@ index 5e26d127a..3c8dff6e6 100644
      mount none /data/storage_area /data_mirror/storage_area bind rec
  
      # Create mirror directory for jit profiles
-@@ -1019,27 +1032,26 @@ on post-fs-data
+@@ -1019,25 +1023,24 @@ on post-fs-data
      mkdir /data/misc/stats-metadata/ 0770 statsd system
      mkdir /data/misc/stats-service/ 0770 statsd system
      mkdir /data/misc/train-info/ 0770 statsd system
-+    # KikiAOSP test: do not synchronize apexd readiness on plain userdata.
- 
+-
      # System server uses securityfs to manage the safesetid policy (b/414893665).
 -    mount securityfs securityfs /sys/kernel/security rw
 -    chown system /sys/kernel/security/safesetid/uid_allowlist_policy
 -
--    wait_for_prop apexd.status activated
--    # Wait for KeyMints to receive APEX module info before starting code from updateable APEXes.
 +    # skipped securityfs mount for KikiAOSP test
 +    # KikiAOSP test: securityfs is unavailable/unused in this graphics bring-up.
 +    # skipped safesetid permission setup
-+    # skipped apexd readiness wait for KikiAOSP test
-+    # KikiAOSP test: apexd readiness wait skipped.
++    # Wait until apexd has mounted all non-bootstrap APEXes before generating the
++    # final linker configuration.
+     wait_for_prop apexd.status activated
+-    # Wait for KeyMints to receive APEX module info before starting code from updateable APEXes.
      # This is to prevent APEX modules from interfering in module measurement.
 -    wait_for_prop keystore.module_hash.sent true
--    perform_apex_config
 +    # skipped keystore module hash wait for KikiAOSP test
 +    # KikiAOSP test: keystore module hash wait skipped with keystore2 disabled.
+     perform_apex_config
  
 -    start system_aconfigd_socket_service
 -    exec_start mainline_aconfigd_init
@@ -12953,12 +14032,9 @@ index 5e26d127a..3c8dff6e6 100644
 -    exec_start derive_sdk
 +    # skipped derive_sdk for minimal bring-up
  
--    init_user0
-+    # KikiAOSP test: derive_sdk skipped for minimal bring-up.
+     init_user0
  
-     # Set SELinux security contexts on upgrade or policy update.
-     restorecon --recursive --skip-ce /data
-@@ -1057,10 +1069,10 @@ on post-fs-data
+@@ -1057,10 +1060,10 @@ on post-fs-data
      # Start the on-device signing daemon, and wait for it to finish, to ensure
      # ART artifacts are generated if needed.
      # Must start after 'derive_classpath' to have *CLASSPATH variables set.
@@ -12971,7 +14047,7 @@ index 5e26d127a..3c8dff6e6 100644
  
      # Bump the boot level to 1000000000; this prevents further on-device signing.
      # This is a special value that shuts down the thread which listens for
-@@ -1071,7 +1083,7 @@ on post-fs-data
+@@ -1071,7 +1074,7 @@ on post-fs-data
      # of a rollback. This should be done immediately after DE_user data keys
      # are loaded. APEXes should not access this data until this has been
      # completed and apexd.status becomes "ready".
@@ -12980,7 +14056,7 @@ index 5e26d127a..3c8dff6e6 100644
  
      # Set fscklog permission
      chown root system /dev/fscklogs/log
-@@ -1083,16 +1095,18 @@ on post-fs-data
+@@ -1083,16 +1086,19 @@ on post-fs-data
      # Update dm-verity state and set partition.*.verified properties.
      verity_update_state
  
@@ -12988,6 +14064,7 @@ index 5e26d127a..3c8dff6e6 100644
 +    # KikiAOSP test: skip odsign verification wait.
 +    # KikiAOSP test: explicitly enter Android nonencrypted framework boot path.
 +    setprop vold.decrypt trigger_restart_framework
++    trigger nonencrypted
      trigger post-fs-data-checkpointed
  
  # It is recommended to put unnecessary data/ initialization from post-fs-data
@@ -13002,12 +14079,12 @@ index 5e26d127a..3c8dff6e6 100644
  
  on boot && property:ro.config.low_ram=true
      # Tweak background writeout
-@@ -1318,3 +1332,15 @@ on property:sys.snapshotctl.map=requested
+@@ -1318,3 +1324,15 @@ on property:sys.snapshotctl.map=requested
  on property:sys.snapshotctl.unmap=requested
      exec - root root system -- /system/bin/snapshotctl unmap
      setprop sys.snapshotctl.unmap "finished"
 +
-+# KikiAOSP temporary bring-up diagnostic: expose Java/logd failures on serial.
++# KikiAOSP bring-up diagnostics dump logs to the UART after startup.
 +service kiki_logdump /system/bin/sh -c "sleep 90; logcat -b all -d -v brief"
 +    class core
 +    user root
@@ -13019,10 +14096,10 @@ index 5e26d127a..3c8dff6e6 100644
 +on boot
 +    start kiki_logdump
 diff --git a/system/core/rootdir/init.zygote64.rc b/system/core/rootdir/init.zygote64.rc
-index 342212123..14b48c481 100644
+index 342212123..0f0f36695 100644
 --- a/system/core/rootdir/init.zygote64.rc
 +++ b/system/core/rootdir/init.zygote64.rc
-@@ -2,6 +2,14 @@ service zygote /system/bin/app_process64 -Xzygote /system/bin --zygote --start-s
+@@ -2,6 +2,13 @@ service zygote /system/bin/app_process64 -Xzygote /system/bin --zygote --start-s
      class main
      priority -20
      user root
@@ -13032,12 +14109,11 @@ index 342212123..14b48c481 100644
 +    setenv ANDROID_ART_ROOT /apex/com.android.art
 +    setenv ANDROID_I18N_ROOT /apex/com.android.i18n
 +    setenv ANDROID_TZDATA_ROOT /apex/com.android.tzdata
-+    setenv SYSTEMSERVERCLASSPATH /system/framework/com.android.location.provider.jar:/system/framework/services.jar
 +    setprop kikiaosp.ignore_apex_versions 1
      group root readproc reserved_disk
      socket zygote stream 660 root system
      socket usap_pool_primary stream 660 root system
-@@ -17,4 +25,5 @@ service zygote /system/bin/app_process64 -Xzygote /system/bin --zygote --start-s
+@@ -17,4 +24,5 @@ service zygote /system/bin/app_process64 -Xzygote /system/bin --zygote --start-s
      onrestart restart netd
      onrestart restart wificond
      task_profiles ProcessCapacityHigh MaxPerformance
@@ -13063,7 +14139,6 @@ index f29545c99..bdb8682db 100644
      task_profiles ProcessCapacityHigh MaxPerformance
      # The stdio implementation for arm32/x86 stores fds in a short.
      # This is part of the ABI, so 32Ki is the max for nofile for ilp32.
-
 diff --git a/system/hwservicemanager/AccessControl.cpp b/system/hwservicemanager/AccessControl.cpp
 index c8366ca..ae9a486 100644
 --- a/system/hwservicemanager/AccessControl.cpp
@@ -13143,7 +14218,6 @@ index 833efe3..8e5ec22 100644
      }
  
      if (int rc = property_set("hwservicemanager.disabled", "false"); rc != 0) {
-
 diff --git a/system/linkerconfig/Android.bp b/system/linkerconfig/Android.bp
 index 1459eb5..a1bf8a9 100644
 --- a/system/linkerconfig/Android.bp
@@ -13156,7 +14230,6 @@ index 1459eb5..a1bf8a9 100644
      defaults: ["linkerconfig_defaults"],
      static_libs: [
          "linkerconfig_modules",
-
 diff --git a/system/logging/logd/Android.bp b/system/logging/logd/Android.bp
 index 64461090..1907c4e3 100644
 --- a/system/logging/logd/Android.bp
@@ -13169,7 +14242,6 @@ index 64461090..1907c4e3 100644
      defaults: ["logd_defaults"],
      init_rc: ["logd.rc"],
  
-
 diff --git a/system/memory/lmkd/Android.bp b/system/memory/lmkd/Android.bp
 index a4f0f84..dfe8177 100644
 --- a/system/memory/lmkd/Android.bp
@@ -13182,7 +14254,6 @@ index a4f0f84..dfe8177 100644
  
      srcs: [
          "lmkd.cpp",
-
 diff --git a/system/netd/server/netd.rc b/system/netd/server/netd.rc
 index 38f7cd4c..e86dc28c 100644
 --- a/system/netd/server/netd.rc
@@ -13198,7 +14269,6 @@ index 38f7cd4c..e86dc28c 100644
  
  # Moved from external/android-clat/vendor-464xlat.rc. Since
  # clatd is modularized and shipped in apex, migrate the
-
 diff --git a/system/security/keystore2/keystore2.rc b/system/security/keystore2/keystore2.rc
 index e669b18b..4a4b17c6 100644
 --- a/system/security/keystore2/keystore2.rc
@@ -13225,7 +14295,6 @@ index 9825583a..876acc2b 100644
      user prng_seeder
      group prng_seeder
      stdio_to_kmsg
-
 diff --git a/system/sepolicy/contexts/file_contexts_test_data b/system/sepolicy/contexts/file_contexts_test_data
 index 999976f71..2d2892a10 100644
 --- a/system/sepolicy/contexts/file_contexts_test_data
@@ -13349,7 +14418,6 @@ index 9ea31c926..ade59f2d5 100644
 +
 +/(vendor|system/vendor)/bin/hw/android\.hardware\.graphics\.composer3-service\.ranchu    u:object_r:hal_graphics_composer_default_exec:s0
 +/(vendor|system/vendor)/bin/hw/android\.hardware\.graphics\.allocator-service\.ranchu    u:object_r:hal_graphics_allocator_default_exec:s0
-
 diff --git a/system/vold/Android.bp b/system/vold/Android.bp
 index 5f4b2b3..db3791f 100644
 --- a/system/vold/Android.bp

@@ -11,6 +11,20 @@ $(call inherit-product, $(SRC_TARGET_DIR)/product/core_minimal.mk)
 $(call inherit-product, $(SRC_TARGET_DIR)/product/languages_default.mk)
 $(call inherit-product, $(SRC_TARGET_DIR)/product/updatable_apex.mk)
 
+# Android's text stack requires the generated fallback map together with the
+# actual font files. Inherit only the stock font fragments from the handheld
+# product, not the phone/tablet service and app package set.
+$(call inherit-product-if-exists, frameworks/base/data/fonts/fonts.mk)
+$(call inherit-product-if-exists, external/google-fonts/dancing-script/fonts.mk)
+$(call inherit-product-if-exists, external/google-fonts/carrois-gothic-sc/fonts.mk)
+$(call inherit-product-if-exists, external/google-fonts/coming-soon/fonts.mk)
+$(call inherit-product-if-exists, external/google-fonts/cutive-mono/fonts.mk)
+$(call inherit-product-if-exists, external/google-fonts/source-sans-pro/fonts.mk)
+$(call inherit-product-if-exists, external/noto-fonts/fonts.mk)
+$(call inherit-product-if-exists, external/roboto-fonts/fonts.mk)
+$(call inherit-product-if-exists, external/roboto-flex-fonts/fonts.mk)
+$(call inherit-product-if-exists, external/roboto-mono/fonts.mk)
+
 # Product identity.
 PRODUCT_NAME := kikiaosp_test_arm64_phone
 PRODUCT_DEVICE := kikiaosp_test
@@ -25,9 +39,15 @@ PRODUCT_SYSTEM_BRAND := KikiAOSP
 # rotation deterministic while preserving the normal WindowManager path.
 DEVICE_PACKAGE_OVERLAYS += device/kiki/kikiaosp_test/overlay
 
+# Keep the current trunk_staging flags, but disable its phone taskbar for this
+# handheld test device so SystemUI creates the standard three-button nav bar.
+PRODUCT_RELEASE_CONFIG_MAPS += \
+    device/kiki/kikiaosp_test/release_config/release_config_map.textproto
+
 PRODUCT_PRODUCT_PROPERTIES += \
     ro.kikiaosp.device=kikiaosp_test_arm64_phone \
-    ro.kikiaosp.graphics=ranchu-native
+    ro.kikiaosp.graphics=ranchu-native \
+    ro.kikiaosp.drm_legacy_present=true
 
 # Use the normal Android framework/service lifecycle. These are explicit
 # device facts or narrowly retained platform workarounds, not a minimal server
@@ -47,28 +67,93 @@ PRODUCT_SYSTEM_PROPERTIES += \
     ro.kikiaosp.keychain_service=true \
     ro.kikiaosp.rollback_manager=true \
     ro.kikiaosp.webview=true \
-    ro.kikiaosp.telephony_registry=false \
+    ro.kikiaosp.telephony_registry=true \
     ro.kikiaosp.telecom_loader=false \
-    ro.kikiaosp.battery_service=false \
-    service.sf.prime_shader_cache=false
+    ro.kikiaosp.battery_service=true \
+    debug.hwui.use_buffer_age=false \
+    debug.hwui.use_partial_updates=false \
+    service.sf.prime_shader_cache=false \
+    debug.sf.nobootanimation=1
 
-# Retain the full standard core/APEX package graph, but keep the user-facing
-# system_ext set small and explicit. KikiWindowTest is installed by Soong as a
-# normal APK, rather than being an out-of-band image-repack-only payload.
+# Retain the full standard core/APEX package graph, with Launcher3QuickStep
+# and Settings as the user-facing apps. KikiWindowTest remains a source-level
+# regression fixture and is not installed in the product image.
 PRODUCT_PACKAGES += \
     Launcher3QuickStep \
     Settings \
     SystemUI \
     LatinIME \
+    FusedLocation \
     preinstalled-packages-platform-handheld-product.xml \
-    preinstalled-packages-handheld-system-ext.xml \
-    KikiWindowTest
+    preinstalled-packages-platform-handheld-system.xml \
+    preinstalled-packages-handheld-system-ext.xml
+
+# LocationManagerService requires a direct-boot-aware fused provider before
+# phase 600 completes. Use AOSP's stock privileged provider rather than a
+# Kiki-specific bypass or an unrelated full handheld product inheritance.
+PRODUCT_SYSTEM_SERVER_APPS += FusedLocation
+
+# Zygote preloads RenderScript framework classes even without app usage.
+# Match the native runtime library included by AOSP handheld_system.mk.
+PRODUCT_PACKAGES += \
+    librs_jni
+
+# Android 17's HintManagerService requires IPower/default during construction.
+# Goldfish uses this upstream no-op virtual Power HAL for the same purpose.
+PRODUCT_PACKAGES += \
+    com.android.hardware.power
+
+# JobScheduler requires BatteryManagerInternal during construction. Keep the
+# platform BatteryService and pair it with AOSP's generic virtual Health HAL;
+# this provides the required service contract without inventing a Kiki HAL.
+PRODUCT_PACKAGES += \
+    android.hardware.health-service.example
+
+# LockSettingsService needs a live Keystore2 backed by KeyMint and Gatekeeper
+# when it creates user-0 synthetic-password keys. These are AOSP's software
+# emulator implementations; no secure hardware or physical peripheral is used.
+PRODUCT_PACKAGES += \
+    android.hardware.security.keymint-service \
+    com.android.hardware.gatekeeper.nonsecure
+
+# SystemServer's SoundTrigger capture-state listener requires a live
+# AudioFlinger. Keep Android audio enabled and provide AOSP's default AIDL
+# core/effect HAL services through their vendor APEX.
+PRODUCT_PACKAGES += \
+    com.android.hardware.audio
+
+# Keep the AIDL audio services alive for Framework startup. For the UI
+# bring-up, the output stream can use the AOSP example HAL's software stub;
+# the same policy can later route to virtio-sound without changing Framework.
+PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
+    vendor/etc/audio_policy_configuration.xml \
+    vendor/etc/audio_policy_volumes.xml \
+    vendor/etc/default_volume_tables.xml \
+    vendor/etc/r_submix_audio_policy_configuration.xml \
+    vendor/etc/bluetooth_with_le_audio_policy_configuration_7_0.xml \
+    vendor/etc/audio_effects_config.xml
+PRODUCT_COPY_FILES += \
+    device/kiki/kikiaosp_test/audio/audio_policy_configuration.xml:vendor/etc/audio_policy_configuration.xml \
+    frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:vendor/etc/audio_policy_volumes.xml \
+    frameworks/av/services/audiopolicy/config/default_volume_tables.xml:vendor/etc/default_volume_tables.xml \
+    frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:vendor/etc/r_submix_audio_policy_configuration.xml \
+    frameworks/av/services/audiopolicy/config/bluetooth_with_le_audio_policy_configuration_7_0.xml:vendor/etc/bluetooth_with_le_audio_policy_configuration_7_0.xml \
+    hardware/interfaces/audio/aidl/default/audio_effects_config.xml:vendor/etc/audio_effects_config.xml
 
 # Dynamic image sizing and RRO enforcement are required by the upstream core
 # product layers and the fixed-orientation device overlay.
 PRODUCT_USE_DYNAMIC_PARTITION_SIZE := true
+# Keep this device overlay static: the navigation-bar and AppWidgetService
+# config booleans are not overlayable resources, so enforced RRO silently
+# drops them from the generated framework-res overlay.
+PRODUCT_ENFORCE_RRO_EXCLUDED_OVERLAYS += \
+    device/kiki/kikiaosp_test/overlay
 PRODUCT_ENFORCE_RRO_TARGETS := *
 PRODUCT_NO_BIONIC_PAGE_SIZE_MACRO := true
+
+# Ranchu's first-stage boot must mount core APEXes before zygote starts.
+# Compressed CAPEX files cannot be directly mounted by this bootstrap path.
+PRODUCT_COMPRESSED_APEX := false
 
 # Use Android's generated APEX linker configuration and the current Ranchu
 # partition contract. The second-stage fstab is consumed by apexd/vold.
@@ -78,9 +163,11 @@ PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     system/etc/init/kiki-minimal-native.rc \
     system/etc/init/kiki-adb.rc \
     vendor/etc/fstab.ranchu \
+    vendor/etc/ueventd.rc \
     vendor/etc/init/hw/init.ranchu.rc
 PRODUCT_COPY_FILES += \
     device/kiki/kikiaosp_test/fstab.ranchu:vendor/etc/fstab.ranchu \
+    device/kiki/kikiaosp_test/ueventd.kikiaosp.rc:vendor/etc/ueventd.rc \
     device/kiki/kikiaosp_test/init.ranchu.rc:vendor/etc/init/hw/init.ranchu.rc \
     device/kiki/kikiaosp_test/kiki-adb.rc:system/etc/init/kiki-adb.rc \
     device/kiki/kikiaosp_test/kiki-minimal-native.rc:system/etc/init/kiki-minimal-native.rc \
@@ -90,6 +177,17 @@ PRODUCT_COPY_FILES += \
 # control. This product exposes no user build lunch target.
 PRODUCT_PACKAGES += kiki-adbd kiki-adbd-standard adbd_flags_c_lib
 PRODUCT_SYSTEM_PROPERTIES += ro.adb.secure=0
+PRODUCT_SYSTEM_PROPERTIES += ro.adb.has_usb=false
+
+# The host keyboard is a connected Android peripheral. Keep its device
+# identity separate from the built-in virtio multitouch screen.
+PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
+    system/usr/idc/Vendor_0627_Product_0001.idc \
+    system/usr/keylayout/Generic.kl \
+    system/usr/keychars/Generic.kcm
+PRODUCT_COPY_FILES += \
+    device/kiki/kikiaosp_test/input/Vendor_0627_Product_0001.idc:system/usr/idc/Vendor_0627_Product_0001.idc
+PRODUCT_PACKAGES += keylayout_data keychars_data
 
 # Runtime data still needed by the currently tracked ART/APEX compatibility
 # patch. Do not delete these aliases/assets until the app_process bootclasspath
@@ -167,9 +265,13 @@ PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
 TARGET_SUPPORTS_32_BIT_APPS := false
 TARGET_SUPPORTS_64_BIT_APPS := true
 
-# Ranchu HWC3, minigbm allocator/mapper, and Pastel are the proven native
-# display stack. This is the Android-facing display contract for upstream QEMU.
-PRODUCT_SOONG_NAMESPACES += device/generic/goldfish/hals/hwc3
+# Upstream QEMU exposes virtio-gpu/DRM, not the Goldfish pipe used by the
+# emulator's default display finder. Select Ranchu HWC3's native DRM finder.
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.hwcomposer.display_finder_mode=drm
+
+# Export the actual Goldfish namespace root so Make installs the Ranchu
+# HWC3 vendor APEX into vendor.img (the hwc3 directory is not a namespace).
+PRODUCT_SOONG_NAMESPACES += device/generic/goldfish
 PRODUCT_PACKAGES += \
     com.android.hardware.graphics.composer.ranchu \
     android.hardware.graphics.composer@2.1-resources \

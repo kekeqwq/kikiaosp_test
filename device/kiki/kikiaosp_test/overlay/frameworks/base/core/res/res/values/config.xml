@@ -2,4 +2,10 @@
 <resources>
     <!-- This sensorless emulator profile intentionally keeps display rotation fixed. -->
     <bool name="config_supportAutoRotation">false</bool>
+
+    <!-- No hardware navigation keys are attached; provide the standard software bar. -->
+    <bool name="config_showNavigationBar">true</bool>
+
+    <!-- Launcher3 Quickstep's widget discovery requires the framework service. -->
+    <bool name="config_enableAppWidgetService">true</bool>
 </resources>

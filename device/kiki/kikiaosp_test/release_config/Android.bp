@@ -1,0 +1,5 @@
+// Device-specific Android release configuration contributions.
+release_config_contributions {
+    name: "release_config_contributions-device_kiki_kikiaosp_test",
+    srcs: ["release_configs/*.textproto"],
+}

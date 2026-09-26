@@ -19,14 +19,12 @@ fi
 stop adbd
 setprop sys.kiki.aconfig.ready 1
 
-# Select the small Kiki Home as the default launcher before the test Activity
-# starts. Closing that window must return to an Activity that draws promptly.
+# Mark the test user ready and make Launcher3 Quickstep the default HOME.
 sleep 50
 # Batteryless QEMU reports UNKNOWN battery status, which Android treats as
 # externally powered. The stock stay-awake policy keeps this test display on
-# even after the test Activity's FLAG_KEEP_SCREEN_ON window is closed.
+# while the launcher or Settings is in the foreground.
 /system/bin/settings put global stay_on_while_plugged_in 15 >/dev/kmsg 2>&1
 /system/bin/settings put global device_provisioned 1 >/dev/kmsg 2>&1
 /system/bin/settings --user 0 put secure user_setup_complete 1 >/dev/kmsg 2>&1
-/system/bin/cmd package set-home-activity --user 0 com.kikiaosp.windowtest >/dev/kmsg 2>&1
-/system/bin/am start --user 0 -n com.kikiaosp.windowtest/.MainActivity >/dev/kmsg 2>&1
+/system/bin/cmd package set-home-activity --user 0 com.android.launcher3 >/dev/kmsg 2>&1

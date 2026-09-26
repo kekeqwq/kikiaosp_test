@@ -17,6 +17,9 @@ on early-init
     setprop ro.kikiaosp.adb.noauth 1
 
 on property:ro.persistent_properties.ready=true
+    # This guest has virtio-net ADB, not an emulated USB gadget.
+    setprop persist.sys.usb.config none
+    setprop sys.usb.config none
     setprop ro.adb.secure 0
     setprop service.adb.listen_addrs tcp:5555
     start kiki_adbd_stage
