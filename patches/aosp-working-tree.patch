@@ -1282,19 +1282,20 @@ index 08b7a46a..4c7aa31d 100644
  
  HWC3::Error Display::setActiveConfig(int32_t configId) {
 diff --git a/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.cpp b/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.cpp
-index 63e5c10a..5264875c 100644
+index 63e5c10a..05902839 100644
 --- a/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.cpp
 +++ b/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.cpp
-@@ -16,6 +16,8 @@
+@@ -16,6 +16,9 @@
  
  #include "DrmAtomicRequest.h"
  
 +#include <utils/Trace.h>
++#include <errno.h>
 +
  namespace aidl::android::hardware::graphics::composer3::impl {
  
  std::unique_ptr<DrmAtomicRequest> DrmAtomicRequest::create() {
-@@ -43,10 +45,14 @@ bool DrmAtomicRequest::Set(uint32_t objectId, const DrmProperty& prop, uint64_t
+@@ -43,10 +46,22 @@ bool DrmAtomicRequest::Set(uint32_t objectId, const DrmProperty& prop, uint64_t
      return true;
  }
  
@@ -1309,6 +1310,14 @@ index 63e5c10a..5264875c 100644
  
 -    int ret = drmModeAtomicCommit(drmFd.get(), mRequest, kCommitFlags, 0);
 +    int ret = drmModeAtomicCommit(drmFd.get(), mRequest, commitFlags, 0);
++    if (ret && nonblocking && errno == EBUSY) {
++        ALOGW("%s:%d: nonblocking atomic commit busy; retrying synchronously",
++              __FUNCTION__, __LINE__);
++        ATRACE_BEGIN("KikiDrmAtomicRequest::EBUSY_sync_fallback");
++        ret = drmModeAtomicCommit(drmFd.get(), mRequest,
++                                  DRM_MODE_ATOMIC_ALLOW_MODESET, 0);
++        ATRACE_END();
++    }
      if (ret) {
          ALOGE("%s:%d: atomic commit failed: %s\n", __FUNCTION__, __LINE__, strerror(errno));
          return false;
