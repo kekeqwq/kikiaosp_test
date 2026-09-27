@@ -35,6 +35,10 @@ PRODUCT_SYSTEM_NAME := KikiAOSP
 PRODUCT_SYSTEM_DEVICE := kikiaosp_test
 PRODUCT_SYSTEM_BRAND := KikiAOSP
 
+# Match the Surface user's preferred Android display density by default.
+# Window resizing still controls the guest pixel dimensions independently.
+TARGET_SCREEN_DENSITY := 248
+
 # This board has no physical orientation sensor; the overlay keeps display
 # rotation deterministic while preserving the normal WindowManager path.
 DEVICE_PACKAGE_OVERLAYS += device/kiki/kikiaosp_test/overlay
