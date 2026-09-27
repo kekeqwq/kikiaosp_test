@@ -680,3 +680,15 @@ serial and stderr logs remain in `aosp/windows-arm64-test/` on host 106.
 - 构建结果：Nix 内核成功，`System.map` 有内建 `virtio_snd` initcall，内核 SHA-256 `bbbf873b85fef920faa49e566c0f356c83817e88e51fb210c05aa21fb3fe406d`；`m -j8 vendorimage` 成功，vendor SHA-256 `65411e95dedf1755aaff006354d8a88982fe23e4688e91553b53e6151780c5e1`。`aapt2 dump resources` 确认覆盖 APK 编入 `eth0;11,12,13,14,15;ip=10.0.2.15/24 gateway=10.0.2.2 dns=10.0.2.3`，vendor 权限目录有 Ethernet 与 Audio Output 特性声明。
 - 首轮 `m -j8 systemimage` 在 R8 阶段约 60% 时无编译错误而意外退出；对应 tmux 作业记录峰值内存 45.5 GiB、swap 2.3 GiB，接近 VM 的 47 GiB 内存，无法仅凭日志断言是哪一层发出 kill。保留增量输出后改用 `m -j4 systemimage` 续跑，575 个实际任务、6 分 54 秒完成且记录 `EXIT_STATUS=0`；system SHA-256 `963305ad2423ab2dc5bd27e7d4488ff4dbe1462a035190f45437289a0ea57cf4`。产物 `system/build.prop` 含 `ro.config.media_vol_steps=15` 与 `ro.config.media_vol_default=15`，`system/bin/kiki-adb-wait.sh` 含通过 `media_session` 设置旧 userdata 音量的命令。
 - 三仓库功能分支分别提交：KikiEmu `bcceaee`、kikiaosp_test `6d794ac`、kikiaosp_kernel `2d77c7a`。本地主仓库 `profiles/network-audio-20260926.json` 固定该镜像配对、源提交与冻结辅助包；收集器按其 SHA-256 验证 kernel/system/vendor/运行辅助文件后在 Surface 生成 `bundles/network-audio-20260926/`。尚未启动新 QEMU 实测，不宣称 APK 网络或 Windows 扬声器已通；保持正在操作的 QEMU 窗口不受干扰。
+
+### W5-GPU-SF-FRAMEBUFFER-AB-20260927
+- 固定 **864×1728** 为最低可用分辨率，不通过降低分辨率、视口或内部渲染比例提高帧率。沿 Android `GLThread -> BufferQueue -> SurfaceFlinger -> FramebufferSurface` 的等待链验证一个纯系统管线候选：`ro.surface_flinger.max_frame_buffer_acquired_buffers=3`，即把 SurfaceFlinger framebuffer 队列从默认 2 个缓冲增至 3 个；没有修改 AOSP frameworks 源码。
+- 候选来自 `kikiaosp_test` GPU 功能分支提交 `1c38c8a`。185 上 `m systemimage -j8` 完成，Soong 扫描构建图约 2 分钟、实际 Ninja 15 个增量任务约 37 秒，没有重编内核或原生 C++。构建日志：`/home/keke/aosp-master/out/systemimage-sf3-20260927.log`。候选 system 镜像为 1,051,099,136 字节，SHA-256 `d633e651de033e2e29e883384b8e0fbba95251f739d89e42171b9d81d3cfe653`，传回 Windows 后校验一致。
+- Android 启动后直接核验：候选 `wm size=864x1728`、属性为 3、SurfaceFlinger `NUM_FRAMEBUFFER_SURFACE_BUFFERS=3` / `mMaxAcquiredBufferCount=2`；原始 renderer 为 virgl GLES 3.1。测试为相同 7.3-rc4 内核、VirGL vendor、8 vCPU、4 GiB RAM、GTK/WGL、blob、Client HWC、Extreme 32,768 instances；每组取启动稳定后的 20 个一秒窗口，无 tracing：
+
+  | Framebuffer 队列 | FPS 中位数（范围） | CLEAR 中位数 | GPU draw 中位数 |
+  | --- | ---: | ---: | ---: |
+  | 3（实验镜像） | 15.30（11.83–17.18） | 61.37 ms | 5.06 ms |
+  | 2（即时基线复测） | 15.18（11.42–17.18） | 60.66 ms | 5.57 ms |
+
+- 两组 FPS 差 0.13，区间完全重叠；没有可重复提速，CLEAR 等待也没有缩短。因此已撤销设备树属性，保留 AOSP 默认 2 缓冲。候选设置及其撤销均只在 GPU 功能分支记录；AOSP frameworks 原代码未改，测试 QEMU 使用 `-snapshot`，稳定 system/vendor/kernel 文件未覆盖。当前窗口恢复运行默认双缓冲基线，尺寸仍为 864×1728。
