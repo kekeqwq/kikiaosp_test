@@ -1,0 +1,50 @@
+diff --git a/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp b/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp
+--- a/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp
++++ b/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp
+@@ -80,7 +80,9 @@ std::unique_ptr<DrmDisplay> DrmDisplay::create(uint32_t id, std::unique_ptr<DrmC
+ std::tuple<HWC3::Error, ::android::base::unique_fd> DrmDisplay::flush(
+     ::android::base::borrowed_fd drmFd, ::android::base::borrowed_fd inSyncFd,
+     const std::shared_ptr<DrmBuffer>& buffer) {
++    ATRACE_BEGIN("KikiDrmDisplay::create_request");
+     std::unique_ptr<DrmAtomicRequest> request = DrmAtomicRequest::create();
++    ATRACE_END();
+     if (!request) {
+         ALOGE("%s: failed to create atomic request.", __FUNCTION__);
+         return std::make_tuple(HWC3::Error::NoResources, ::android::base::unique_fd());
+@@ -89,6 +91,7 @@ std::tuple<HWC3::Error, ::android::base::unique_fd> DrmDisplay::flush(
+     int flushFenceFd = -1;
+ 
+     bool okay = true;
++    ATRACE_BEGIN("KikiDrmDisplay::program_request");
+     okay &=
+         request->Set(mCrtc->getId(), mCrtc->getOutFenceProperty(), addressAsUint(&flushFenceFd));
+     okay &= request->Set(mPlane->getId(), mPlane->getCrtcProperty(), mCrtc->getId());
+@@ -105,10 +108,13 @@ std::tuple<HWC3::Error, ::android::base::unique_fd> DrmDisplay::flush(
+     okay &= request->Set(mPlane->getId(), mPlane->getSrcYProperty(), 0);
+     okay &= request->Set(mPlane->getId(), mPlane->getSrcWProperty(), buffer->mWidth << 16);
+     okay &= request->Set(mPlane->getId(), mPlane->getSrcHProperty(), buffer->mHeight << 16);
++    ATRACE_END();
+ 
++    ATRACE_BEGIN("KikiDrmDisplay::atomic_commit");
+     const bool nonblockingPresent = ::android::base::GetBoolProperty(
+         "ro.vendor.kikiaosp.drm_nonblock_present", false);
+     okay &= request->Commit(drmFd, nonblockingPresent);
++    ATRACE_END();
+     if (!okay) {
+         ALOGE("%s: failed to flush to display.", __FUNCTION__);
+         return std::make_tuple(HWC3::Error::NoResources, ::android::base::unique_fd());
+@@ -121,1 +127,2 @@ std::tuple<HWC3::Error, ::android::base::unique_fd> DrmDisplay::flush(
++    ATRACE_BEGIN("KikiDrmDisplay::legacy_present");
+     if (::android::base::GetBoolProperty("ro.kikiaosp.drm_legacy_present", false)) {
+@@ -139,8 +146,11 @@ std::tuple<HWC3::Error, ::android::base::unique_fd> DrmDisplay::flush(
+         }
+         if (crtc) drmModeFreeCrtc(crtc);
+     }
++    ATRACE_END();
+ 
++    ATRACE_BEGIN("KikiDrmDisplay::retain_buffer");
+     mPreviousBuffer = buffer;
++    ATRACE_END();
+ 
+     DEBUG_LOG("%s: submitted atomic update, flush fence:%d\n", __FUNCTION__, flushFenceFd);
+     return std::make_tuple(HWC3::Error::None, ::android::base::unique_fd(flushFenceFd));

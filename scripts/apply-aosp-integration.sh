@@ -6,6 +6,8 @@ REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 "$REPO_ROOT/scripts/sync-device-tree.sh" "$AOSP_ROOT"
 patch -d "$AOSP_ROOT" -p1 --forward < "$REPO_ROOT/patches/aosp-working-tree.patch"
 patch -d "$AOSP_ROOT" -p1 --forward --no-backup-if-mismatch < "$REPO_ROOT/patches/aosp-hwc-nonblock-present.patch"
+patch -d "$AOSP_ROOT" -p1 --forward --no-backup-if-mismatch < "$REPO_ROOT/patches/aosp-hwc-drm-path-trace.patch"
+patch -d "$AOSP_ROOT" -p1 --forward --no-backup-if-mismatch < "$REPO_ROOT/patches/aosp-hwc-display-flush-trace.patch"
 while IFS= read -r -d '' src; do
   rel=${src#"$REPO_ROOT/overlays/"}
   mkdir -p "$AOSP_ROOT/$(dirname "$rel")"
