@@ -47,7 +47,7 @@ PRODUCT_RELEASE_CONFIG_MAPS += \
 PRODUCT_PRODUCT_PROPERTIES += \
     ro.kikiaosp.device=kikiaosp_test_arm64_phone \
     ro.kikiaosp.graphics=ranchu-native \
-    ro.kikiaosp.drm_legacy_present=true
+    ro.kikiaosp.drm_legacy_present=false
 
 # Use the normal Android framework/service lifecycle. These are explicit
 # device facts or narrowly retained platform workarounds, not a minimal server

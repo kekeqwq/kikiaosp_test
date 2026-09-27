@@ -1,0 +1,17 @@
+diff --git a/device/generic/goldfish/hals/hwc3/DrmClient.cpp b/device/generic/goldfish/hals/hwc3/DrmClient.cpp
+--- a/device/generic/goldfish/hals/hwc3/DrmClient.cpp
++++ b/device/generic/goldfish/hals/hwc3/DrmClient.cpp
+@@ -435,5 +436,13 @@
++    ATRACE_BEGIN("KikiDrmClient::display_lock");
+     AutoReadLock lock(mDisplaysMutex);
++    ATRACE_END();
++    ATRACE_BEGIN("KikiDrmClient::set_master");
+     drmSetMaster(mFd.get());
++    ATRACE_END();
++    ATRACE_BEGIN("KikiDrmClient::display_flush");
+     auto result = mDisplays[displayId]->flush(mFd, inSyncFd, buffer);
++    ATRACE_END();
++    ATRACE_BEGIN("KikiDrmClient::drop_master");
+     drmDropMaster(mFd.get());
++    ATRACE_END();
+     return result;
