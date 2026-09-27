@@ -692,3 +692,9 @@ serial and stderr logs remain in `aosp/windows-arm64-test/` on host 106.
   | 2（即时基线复测） | 15.18（11.42–17.18） | 60.66 ms | 5.57 ms |
 
 - 两组 FPS 差 0.13，区间完全重叠；没有可重复提速，CLEAR 等待也没有缩短。因此已撤销设备树属性，保留 AOSP 默认 2 缓冲。候选设置及其撤销均只在 GPU 功能分支记录；AOSP frameworks 原代码未改，测试 QEMU 使用 `-snapshot`，稳定 system/vendor/kernel 文件未覆盖。当前窗口恢复运行默认双缓冲基线，尺寸仍为 864×1728。
+
+### W5-GPU-HWC-NONBLOCK-PRESENT-20260927
+- 固定 `wm size=864x1728`、VirGL、GTK/WGL、8 vCPU、4 GiB、Client HWC、Extreme 32,768 instances 时，从当前运行基线抓取了 3 秒 `gfx view sched` atrace；跟踪采样不计入 FPS A/B。
+- 跟踪内 HWC 进程 `flushToDisplay()` 有 45 次完整样本，耗时中位数 **45.42 ms**，范围 **34.02–76.31 ms**；SurfaceFlinger 的每帧 Client Target 正在该路径等待。`DrmDisplay::flush()` 已设置 CRTC `OUT_FENCE_PTR` 并传递图层输入 fence，但逐帧 `drmModeAtomicCommit()` 目前只带 `DRM_MODE_ATOMIC_ALLOW_MODESET`，同步提交把整个 Present 调用阻塞数十毫秒。当前主线输入仍约 14–16 FPS，实际 GPU draw 约 4–6 ms。
+- 新增可回退候选 `ro.vendor.kikiaosp.drm_nonblock_present=true`：仅显示帧提交附加 `DRM_MODE_ATOMIC_NONBLOCK`，通过既有 OUT_FENCE 返回完成时序；首次显示/模式切换/热插拔提交仍维持同步。实现以独立 AOSP patch 存在于 kikiaosp_test 仓库，并由集成脚本应用，避免留下未记录的上游源码改动。
+- 这只是待验证假设，尚未构建或启动候选镜像；下一步构建 vendorimage，在保持 **864×1728** 和同一负载时核对 HWC 调用耗时、FPS、显示稳定性和 fence 错误。若不提升或出现提交错误/丢帧，将撤销该 opt-in 并保留可启动的双缓冲基线。

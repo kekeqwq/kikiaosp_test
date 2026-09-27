@@ -289,7 +289,11 @@ TARGET_SUPPORTS_64_BIT_APPS := true
 
 # Upstream QEMU exposes virtio-gpu/DRM, not the Goldfish pipe used by the
 # emulator's default display finder. Select Ranchu HWC3's native DRM finder.
-PRODUCT_VENDOR_PROPERTIES += ro.vendor.hwcomposer.display_finder_mode=drm
+# The opt-in async KMS test uses the existing OUT_FENCE_PTR path to avoid
+# synchronously waiting for every virtual-display atomic commit.
+PRODUCT_VENDOR_PROPERTIES += \
+    ro.vendor.hwcomposer.display_finder_mode=drm \
+    ro.vendor.kikiaosp.drm_nonblock_present=true
 
 # Export the actual Goldfish namespace root so Make installs the Ranchu
 # HWC3 vendor APEX into vendor.img (the hwc3 directory is not a namespace).

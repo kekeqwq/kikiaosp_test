@@ -1,0 +1,33 @@
+diff --git a/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.h b/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.h
+--- a/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.h
++++ b/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.h
+@@ -43,1 +43,1 @@
+-    bool Commit(::android::base::borrowed_fd drmFd);
++    bool Commit(::android::base::borrowed_fd drmFd, bool nonblocking = false);
+diff --git a/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.cpp b/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.cpp
+--- a/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.cpp
++++ b/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.cpp
+@@ -17,1 +17,3 @@
+ #include "DrmAtomicRequest.h"
++
++#include <utils/Trace.h>
+@@ -42,4 +44,8 @@
+-bool DrmAtomicRequest::Commit(::android::base::borrowed_fd drmFd) {
+-    constexpr const uint32_t kCommitFlags = DRM_MODE_ATOMIC_ALLOW_MODESET;
++bool DrmAtomicRequest::Commit(::android::base::borrowed_fd drmFd, bool nonblocking) {
++    ATRACE_CALL();
++    uint32_t commitFlags = DRM_MODE_ATOMIC_ALLOW_MODESET;
++    if (nonblocking) {
++        commitFlags |= DRM_MODE_ATOMIC_NONBLOCK;
++    }
+ 
+-    int ret = drmModeAtomicCommit(drmFd.get(), mRequest, kCommitFlags, 0);
++    int ret = drmModeAtomicCommit(drmFd.get(), mRequest, commitFlags, 0);
+diff --git a/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp b/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp
+--- a/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp
++++ b/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp
+@@ -109,1 +109,3 @@
+-    okay &= request->Commit(drmFd);
++    const bool nonblockingPresent = ::android::base::GetBoolProperty(
++        "ro.vendor.kikiaosp.drm_nonblock_present", false);
++    okay &= request->Commit(drmFd, nonblockingPresent);
