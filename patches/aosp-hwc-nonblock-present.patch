@@ -1,17 +1,16 @@
 diff --git a/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.h b/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.h
 --- a/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.h
 +++ b/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.h
-@@ -43,1 +43,1 @@
+@@ -42,1 +42,1 @@
 -    bool Commit(::android::base::borrowed_fd drmFd);
 +    bool Commit(::android::base::borrowed_fd drmFd, bool nonblocking = false);
 diff --git a/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.cpp b/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.cpp
 --- a/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.cpp
 +++ b/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.cpp
-@@ -17,1 +17,3 @@
- #include "DrmAtomicRequest.h"
+@@ -17,0 +18,2 @@
 +
 +#include <utils/Trace.h>
-@@ -42,4 +44,8 @@
+@@ -46,4 +48,8 @@
 -bool DrmAtomicRequest::Commit(::android::base::borrowed_fd drmFd) {
 -    constexpr const uint32_t kCommitFlags = DRM_MODE_ATOMIC_ALLOW_MODESET;
 +bool DrmAtomicRequest::Commit(::android::base::borrowed_fd drmFd, bool nonblocking) {
