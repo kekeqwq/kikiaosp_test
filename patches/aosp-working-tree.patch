@@ -697,6 +697,263 @@ index 74dfb67a..f41fd404 100644
          "hwc3-apex.rc",
      ],
  }
+diff --git a/device/generic/goldfish/hals/hwc3/ClientFrameComposer.cpp b/device/generic/goldfish/hals/hwc3/ClientFrameComposer.cpp
+index 10c6ce89..7e31f40b 100644
+--- a/device/generic/goldfish/hals/hwc3/ClientFrameComposer.cpp
++++ b/device/generic/goldfish/hals/hwc3/ClientFrameComposer.cpp
+@@ -16,10 +16,13 @@
+ 
+ #include "ClientFrameComposer.h"
+ 
++#include <sys/stat.h>
++
+ #include <android-base/parseint.h>
+ #include <android-base/properties.h>
+ #include <android-base/strings.h>
+ #include <android/hardware/graphics/common/1.0/types.h>
++#include <cros_gralloc_handle.h>
+ #include <drm_fourcc.h>
+ #include <libyuv.h>
+ #include <sync/sync.h>
+@@ -32,6 +35,14 @@
+ #include "Layer.h"
+ 
+ namespace aidl::android::hardware::graphics::composer3::impl {
++namespace {
++
++bool IsDirectScanoutFormat(uint32_t format) {
++    return format == DRM_FORMAT_ABGR8888 || format == DRM_FORMAT_XBGR8888 ||
++           format == DRM_FORMAT_ARGB8888 || format == DRM_FORMAT_XRGB8888;
++}
++
++}  // namespace
+ 
+ HWC3::Error ClientFrameComposer::init() {
+     DEBUG_LOG("%s", __FUNCTION__);
+@@ -47,7 +58,6 @@ HWC3::Error ClientFrameComposer::init() {
+ 
+ HWC3::Error ClientFrameComposer::registerOnHotplugCallback(const HotplugCallback& cb) {
+     return mDrmClient.registerOnHotplugCallback(cb);
+-    return HWC3::Error::None;
+ }
+ 
+ HWC3::Error ClientFrameComposer::unregisterOnHotplugCallback() {
+@@ -58,7 +68,6 @@ HWC3::Error ClientFrameComposer::onDisplayCreate(Display* display) {
+     const auto displayId = display->getId();
+     DEBUG_LOG("%s display:%" PRIu64, __FUNCTION__, displayId);
+ 
+-    // Ensure created.
+     mDisplayInfos.emplace(displayId, DisplayInfo{});
+ 
+     return HWC3::Error::None;
+@@ -105,13 +114,74 @@ HWC3::Error ClientFrameComposer::onDisplayClientTargetSet(Display* display) {
+ 
+ HWC3::Error ClientFrameComposer::onActiveConfigChange(Display* /*display*/) {
+     return HWC3::Error::None;
+-};
++}
++
++bool ClientFrameComposer::canScanOutDirectly(Display* display, Layer* layer) const {
++    if (display->hasColorTransform() || layer == nullptr) {
++        return false;
++    }
++
++    const auto composition = layer->getCompositionType();
++    if (composition == Composition::SOLID_COLOR || composition == Composition::CURSOR ||
++        composition == Composition::SIDEBAND || composition == Composition::DISPLAY_DECORATION) {
++        return false;
++    }
++    if (layer->getBlendMode() != common::BlendMode::NONE) {
++        return false;
++    }
++    if (static_cast<int32_t>(layer->getTransform()) != 0) {
++        return false;
++    }
++
++    buffer_handle_t handle = layer->getBuffer().getBuffer();
++    if (handle == nullptr) {
++        return false;
++    }
++    auto* crosHandle = reinterpret_cast<cros_gralloc_handle_t>(handle);
++    if (crosHandle->num_planes != 1 || crosHandle->fds[0] < 0 ||
++        !IsDirectScanoutFormat(crosHandle->format) ||
++        crosHandle->format_modifier != DRM_FORMAT_MOD_LINEAR) {
++        return false;
++    }
++
++    int32_t configId = -1;
++    if (display->getActiveConfig(&configId) != HWC3::Error::None) {
++        return false;
++    }
++    int32_t width = 0;
++    int32_t height = 0;
++    if (display->getDisplayAttribute(configId, DisplayAttribute::WIDTH, &width) != HWC3::Error::None ||
++        display->getDisplayAttribute(configId, DisplayAttribute::HEIGHT, &height) != HWC3::Error::None ||
++        width <= 0 || height <= 0) {
++        return false;
++    }
++    const common::Rect frame = layer->getDisplayFrame();
++    const common::Rect crop = layer->getSourceCropInt();
++    if (frame.left != 0 || frame.top != 0 || frame.right != width || frame.bottom != height) {
++        return false;
++    }
++    if (crop.left != 0 || crop.top != 0 || crop.right != width || crop.bottom != height) {
++        return false;
++    }
++    if (crosHandle->width != static_cast<uint32_t>(width) ||
++        crosHandle->height != static_cast<uint32_t>(height)) {
++        return false;
++    }
++    return true;
++}
+ 
+ HWC3::Error ClientFrameComposer::validateDisplay(Display* display, DisplayChanges* outChanges) {
+     const auto displayId = display->getId();
+     DEBUG_LOG("%s display:%" PRIu64, __FUNCTION__, displayId);
+ 
+     const std::vector<Layer*>& layers = display->getOrderedLayers();
++    if (layers.size() == 1 && canScanOutDirectly(display, layers[0])) {
++        if (layers[0]->getCompositionType() != Composition::DEVICE) {
++            outChanges->addLayerCompositionChange(displayId, layers[0]->getId(),
++                                                  Composition::DEVICE);
++        }
++        return HWC3::Error::None;
++    }
+ 
+     for (Layer* layer : layers) {
+         const auto layerId = layer->getId();
+@@ -119,7 +189,6 @@ HWC3::Error ClientFrameComposer::validateDisplay(Display* display, DisplayChange
+ 
+         if (layerCompositionType != Composition::CLIENT) {
+             outChanges->addLayerCompositionChange(displayId, layerId, Composition::CLIENT);
+-            continue;
+         }
+     }
+ 
+@@ -128,7 +197,7 @@ HWC3::Error ClientFrameComposer::validateDisplay(Display* display, DisplayChange
+ 
+ HWC3::Error ClientFrameComposer::presentDisplay(
+     Display* display, ::android::base::unique_fd* outDisplayFence,
+-    std::unordered_map<int64_t, ::android::base::unique_fd>* /*outLayerFences*/) {
++    std::unordered_map<int64_t, ::android::base::unique_fd>* outLayerFences) {
+     const auto displayId = display->getId();
+     DEBUG_LOG("%s display:%" PRIu64, __FUNCTION__, displayId);
+ 
+@@ -139,6 +208,68 @@ HWC3::Error ClientFrameComposer::presentDisplay(
+     }
+ 
+     DisplayInfo& displayInfo = displayInfoIt->second;
++    const std::vector<Layer*>& layers = display->getOrderedLayers();
++    if (layers.size() == 1 && layers[0]->getCompositionType() == Composition::DEVICE &&
++        canScanOutDirectly(display, layers[0])) {
++        auto* crosHandle = reinterpret_cast<cros_gralloc_handle_t>(
++            layers[0]->getBuffer().getBuffer());
++        struct stat bufferStat = {};
++        const bool haveIdentity = fstat(crosHandle->fds[0], &bufferStat) == 0;
++        std::shared_ptr<DrmBuffer> drmBuffer;
++        if (haveIdentity) {
++            for (const auto& cached : displayInfo.scanoutBuffers) {
++                if (cached.id == crosHandle->id && cached.device == bufferStat.st_dev &&
++                    cached.inode == bufferStat.st_ino) {
++                    drmBuffer = cached.buffer;
++                    ++mDirectScanoutCacheHits;
++                    break;
++                }
++            }
++        }
++        if (!drmBuffer) {
++            auto [createError, imported] = mDrmClient.create(layers[0]->getBuffer().getBuffer());
++            if (createError != HWC3::Error::None || !imported) {
++                ALOGE("%s: direct scanout import failed for display:%" PRIu64, __FUNCTION__,
++                      displayId);
++                return HWC3::Error::NoResources;
++            }
++            drmBuffer = std::move(imported);
++            ++mDirectScanoutCacheMisses;
++            if (haveIdentity) {
++                // The display and DrmDisplay each retain the active buffer across commit.
++                // Eight entries cover the normal 3-5 slot queue without unbounded GEM refs.
++                if (displayInfo.scanoutBuffers.size() >= 8) {
++                    displayInfo.scanoutBuffers.erase(displayInfo.scanoutBuffers.begin());
++                }
++                displayInfo.scanoutBuffers.push_back(
++                    {crosHandle->id, bufferStat.st_dev, bufferStat.st_ino, drmBuffer});
++            }
++        }
++
++        displayInfo.scanoutBuffer = drmBuffer;
++        ::android::base::unique_fd acquireFence = layers[0]->getBuffer().getFence();
++        auto [flushError, flushFence] = mDrmClient.flushToDisplay(
++            static_cast<uint32_t>(displayId), drmBuffer, acquireFence);
++        if (flushError != HWC3::Error::None) {
++            ALOGE("%s: direct scanout flush failed for display:%" PRIu64, __FUNCTION__, displayId);
++            return flushError;
++        }
++
++        if (outLayerFences != nullptr && flushFence.ok()) {
++            (*outLayerFences)[layers[0]->getId()] =
++                ::android::base::unique_fd(dup(flushFence.get()));
++        }
++        if ((mDirectScanoutFrames % 120ull) == 0ull) {
++            ALOGI("KikiAOSP: direct-scanout display:%" PRIu64 " layer:%" PRIu64
++                  " frames:%" PRIu64 " cache_hits:%" PRIu64 " cache_misses:%" PRIu64,
++                  displayId, layers[0]->getId(), mDirectScanoutFrames,
++                  mDirectScanoutCacheHits, mDirectScanoutCacheMisses);
++        }
++        mDirectScanoutFrames++;
++        *outDisplayFence = std::move(flushFence);
++        return HWC3::Error::None;
++    }
++
+     if (!displayInfo.clientTargetDrmBuffer) {
+         ALOGW("%s: display:%" PRIu64 " no client target set, nothing to present.", __FUNCTION__,
+               displayId);
+diff --git a/device/generic/goldfish/hals/hwc3/ClientFrameComposer.h b/device/generic/goldfish/hals/hwc3/ClientFrameComposer.h
+index 18603505..ccdf9dca 100644
+--- a/device/generic/goldfish/hals/hwc3/ClientFrameComposer.h
++++ b/device/generic/goldfish/hals/hwc3/ClientFrameComposer.h
+@@ -17,6 +17,9 @@
+ #ifndef ANDROID_HWC_CLIENTFRAMECOMPOSER_H
+ #define ANDROID_HWC_CLIENTFRAMECOMPOSER_H
+ 
++#include <sys/types.h>
++#include <vector>
++
+ #include "Common.h"
+ #include "Display.h"
+ #include "DrmClient.h"
+@@ -56,6 +59,8 @@ class ClientFrameComposer : public FrameComposer {
+     // display and requests changes for layers that can't not be composed.
+     HWC3::Error validateDisplay(Display* display, DisplayChanges* outChanges) override;
+ 
++    bool canScanOutDirectly(Display* display, Layer* layer) const;
++
+     // Performs the actual composition of layers and presents the composed result
+     // to the display.
+     HWC3::Error presentDisplay(
+@@ -66,9 +71,22 @@ class ClientFrameComposer : public FrameComposer {
+ 
+    private:
+     struct DisplayInfo {
++        struct ScanoutBuffer {
++            uint32_t id;
++            dev_t device;
++            ino_t inode;
++            std::shared_ptr<DrmBuffer> buffer;
++        };
++
+         std::shared_ptr<DrmBuffer> clientTargetDrmBuffer;
++        std::shared_ptr<DrmBuffer> scanoutBuffer;
++        std::vector<ScanoutBuffer> scanoutBuffers;
+     };
+ 
++    uint64_t mDirectScanoutFrames = 0;
++    uint64_t mDirectScanoutCacheHits = 0;
++    uint64_t mDirectScanoutCacheMisses = 0;
++
+     std::unordered_map<int64_t, DisplayInfo> mDisplayInfos;
+ 
+     DrmClient mDrmClient;
 diff --git a/device/generic/goldfish/hals/hwc3/Common.cpp b/device/generic/goldfish/hals/hwc3/Common.cpp
 index 9eb27da5..59caf2d5 100644
 --- a/device/generic/goldfish/hals/hwc3/Common.cpp
@@ -2225,7 +2482,7 @@ index 24a7c45..d354c66 100644
 \ No newline at end of file
 +    task_profiles ServiceCapacityLow
 diff --git a/external/minigbm/cros_gralloc/cros_gralloc_driver.cc b/external/minigbm/cros_gralloc/cros_gralloc_driver.cc
-index 706dee9..a5d2708 100644
+index 706dee9..07f539a 100644
 --- a/external/minigbm/cros_gralloc/cros_gralloc_driver.cc
 +++ b/external/minigbm/cros_gralloc/cros_gralloc_driver.cc
 @@ -12,6 +12,7 @@
@@ -2320,25 +2577,17 @@ index 706dee9..a5d2708 100644
  }
  
  cros_gralloc_driver::~cros_gralloc_driver()
-@@ -270,15 +302,23 @@ int32_t cros_gralloc_driver::allocate(const struct cros_gralloc_buffer_descripto
- 	struct bo *bo;
- 	struct cros_gralloc_handle *hnd;
+@@ -272,6 +304,7 @@ int32_t cros_gralloc_driver::allocate(const struct cros_gralloc_buffer_descripto
  	std::unique_ptr<cros_gralloc_buffer> buffer;
-+	const int drm_fd = drv_ ? drv_get_fd(drv_.get()) : -1;
-+	const int master_ret = drm_fd >= 0 && !drmIsMaster(drm_fd) ? drmSetMaster(drm_fd) : 0;
-+	const bool acquired_master = master_ret == 0;
-+	FILE* km = fopen("/dev/kmsg", "w");
-+	if (km) { fprintf(km, "<6>KIKI-GRALLOC master fd=%d ret=%d is=%d\\n", drm_fd, master_ret, drm_fd >= 0 ? drmIsMaster(drm_fd) : 0); fclose(km); }
  
  	if (!get_resolved_format_and_use_flags(descriptor, &resolved_format, &resolved_use_flags)) {
 +		FILE* k = fopen("/dev/kmsg", "w"); if (k) { fprintf(k, "<3>KIKI-GRALLOC resolve format=%u usage=%llx\\n", descriptor->drm_format, (unsigned long long)descriptor->use_flags); fclose(k); }
  		ALOGE("Failed to resolve format and use_flags.");
  		return -EINVAL;
  	}
- 
+@@ -279,6 +312,7 @@ int32_t cros_gralloc_driver::allocate(const struct cros_gralloc_buffer_descripto
  	bo = drv_bo_create(drv_.get(), descriptor->width, descriptor->height, resolved_format,
  			   resolved_use_flags);
-+	if (acquired_master) drmDropMaster(drm_fd);
  	if (!bo) {
 +		FILE* k = fopen("/dev/kmsg", "w"); if (k) { fprintf(k, "<3>KIKI-GRALLOC bo failed errno=%d format=%u usage=%llx\\n", errno, resolved_format, (unsigned long long)resolved_use_flags); fclose(k); }
  		ALOGE("Failed to create bo.");
