@@ -697,114 +697,6 @@ index 74dfb67a..f41fd404 100644
          "hwc3-apex.rc",
      ],
  }
-diff --git a/device/generic/goldfish/hals/hwc3/ClientFrameComposer.cpp b/device/generic/goldfish/hals/hwc3/ClientFrameComposer.cpp
-index 10c6ce89..7d842df6 100644
---- a/device/generic/goldfish/hals/hwc3/ClientFrameComposer.cpp
-+++ b/device/generic/goldfish/hals/hwc3/ClientFrameComposer.cpp
-@@ -19,10 +19,15 @@
- #include <android-base/parseint.h>
- #include <android-base/properties.h>
- #include <android-base/strings.h>
-+#include <cerrno>
-+#include <cstdio>
- #include <android/hardware/graphics/common/1.0/types.h>
- #include <drm_fourcc.h>
- #include <libyuv.h>
- #include <sync/sync.h>
-+#include <fcntl.h>
-+#include <sys/mman.h>
-+#include <unistd.h>
- #include <ui/GraphicBuffer.h>
- #include <ui/GraphicBufferAllocator.h>
- #include <ui/GraphicBufferMapper.h>
-@@ -81,6 +86,7 @@ HWC3::Error ClientFrameComposer::onDisplayDestroy(Display* display) {
- 
- HWC3::Error ClientFrameComposer::onDisplayClientTargetSet(Display* display) {
-     const auto displayId = display->getId();
-+    fprintf(stderr, "WINQ-CLIENTTARGET enter %" PRIu64 "\\n", displayId); fflush(stderr);
-     DEBUG_LOG("%s display:%" PRIu64, __FUNCTION__, displayId);
- 
-     auto it = mDisplayInfos.find(displayId);
-@@ -93,12 +99,16 @@ HWC3::Error ClientFrameComposer::onDisplayClientTargetSet(Display* display) {
- 
-     auto [drmBufferCreateError, drmBuffer] =
-         mDrmClient.create(display->getClientTarget().getBuffer());
-+    ALOGE("WINQ-CLIENTTARGET create display=%" PRIu64 " error=%d buffer=%p", displayId,
-+          static_cast<int>(drmBufferCreateError), drmBuffer.get());
-     if (drmBufferCreateError != HWC3::Error::None) {
-+        fprintf(stderr, "WINQ-CLIENTTARGET fail %d\\n", static_cast<int>(drmBufferCreateError)); fflush(stderr);
-         ALOGE("%s: display:%" PRIu64 " failed to create client target drm buffer", __FUNCTION__,
-               displayId);
-         return HWC3::Error::NoResources;
-     }
-     displayInfo.clientTargetDrmBuffer = std::move(drmBuffer);
-+    fprintf(stderr, "WINQ-CLIENTTARGET ok %" PRIu64 "\\n", displayId); fflush(stderr);
- 
-     return HWC3::Error::None;
- }
-@@ -130,6 +140,7 @@ HWC3::Error ClientFrameComposer::presentDisplay(
-     Display* display, ::android::base::unique_fd* outDisplayFence,
-     std::unordered_map<int64_t, ::android::base::unique_fd>* /*outLayerFences*/) {
-     const auto displayId = display->getId();
-+    fprintf(stderr, "WINQ-PRESENT enter %" PRIu64 "\\n", displayId); fflush(stderr);
-     DEBUG_LOG("%s display:%" PRIu64, __FUNCTION__, displayId);
- 
-     auto displayInfoIt = mDisplayInfos.find(displayId);
-@@ -140,6 +151,8 @@ HWC3::Error ClientFrameComposer::presentDisplay(
- 
-     DisplayInfo& displayInfo = displayInfoIt->second;
-     if (!displayInfo.clientTargetDrmBuffer) {
-+        fprintf(stderr, "WINQ-PRESENT no-buffer %" PRIu64 "\\n", displayId); fflush(stderr);
-+        ALOGE("WINQ-PRESENT no client target display=%" PRIu64, displayId);
-         ALOGW("%s: display:%" PRIu64 " no client target set, nothing to present.", __FUNCTION__,
-               displayId);
-         return HWC3::Error::None;
-@@ -149,6 +162,45 @@ HWC3::Error ClientFrameComposer::presentDisplay(
- 
-     auto [flushError, flushCompleteFence] = mDrmClient.flushToDisplay(
-         static_cast<uint32_t>(displayId), displayInfo.clientTargetDrmBuffer, fence);
-+    fprintf(stderr, "WINQ-PRESENT flush %d\\n", static_cast<int>(flushError)); fflush(stderr);
-+    ALOGE("WINQ-PRESENT flush display=%" PRIu64 " error=%d", displayId,
-+          static_cast<int>(flushError));
-+    static unsigned sampleCount = 0;
-+    if (++sampleCount % 60 == 0) {
-+        const native_handle_t* target = display->getClientTarget().getBuffer();
-+        if (target && target->numFds > 0) {
-+            const int fd = target->data[0];
-+            const off_t size = lseek(fd, 0, SEEK_END);
-+            lseek(fd, 0, SEEK_SET);
-+            if (size >= 4) {
-+                void* mapped = mmap(nullptr, static_cast<size_t>(size), PROT_READ, MAP_SHARED,
-+                                    fd, 0);
-+                if (mapped != MAP_FAILED) {
-+                    const auto* bytes = static_cast<const uint8_t*>(mapped);
-+                    const size_t middle = static_cast<size_t>(size) / 2 & ~size_t{3};
-+                    uint64_t brightPixels = 0;
-+                    uint64_t greenPixels = 0;
-+                    for (size_t i = 0; i + 3 < static_cast<size_t>(size); i += 4) {
-+                        const uint8_t red = bytes[i];
-+                        const uint8_t green = bytes[i + 1];
-+                        const uint8_t blue = bytes[i + 2];
-+                        if (red > 200 && green > 200 && blue > 200) ++brightPixels;
-+                        if (green > 220 && red < 100 && blue < 100) ++greenPixels;
-+                    }
-+                    fprintf(stderr,
-+                            "KIKI-SCANOUT-SAMPLE size=%jd first=%02x%02x%02x%02x middle=%02x%02x%02x%02x bright=%" PRIu64 " green=%" PRIu64 "\\n",
-+                            static_cast<intmax_t>(size), bytes[0], bytes[1], bytes[2], bytes[3],
-+                            bytes[middle], bytes[middle + 1], bytes[middle + 2], bytes[middle + 3],
-+                            brightPixels, greenPixels);
-+                    fflush(stderr);
-+                    munmap(mapped, static_cast<size_t>(size));
-+                } else {
-+                    fprintf(stderr, "KIKI-SCANOUT-SAMPLE mmap-failed errno=%d\\n", errno);
-+                    fflush(stderr);
-+                }
-+            }
-+        }
-+    }
-     if (flushError != HWC3::Error::None) {
-         ALOGE("%s: display:%" PRIu64 " failed to flush drm buffer" PRIu64, __FUNCTION__, displayId);
-     }
 diff --git a/device/generic/goldfish/hals/hwc3/Common.cpp b/device/generic/goldfish/hals/hwc3/Common.cpp
 index 9eb27da5..59caf2d5 100644
 --- a/device/generic/goldfish/hals/hwc3/Common.cpp
@@ -1132,8 +1024,52 @@ index 08b7a46a..4c7aa31d 100644
  }
  
  HWC3::Error Display::setActiveConfig(int32_t configId) {
+diff --git a/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.cpp b/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.cpp
+index 63e5c10a..5264875c 100644
+--- a/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.cpp
++++ b/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.cpp
+@@ -16,6 +16,8 @@
+ 
+ #include "DrmAtomicRequest.h"
+ 
++#include <utils/Trace.h>
++
+ namespace aidl::android::hardware::graphics::composer3::impl {
+ 
+ std::unique_ptr<DrmAtomicRequest> DrmAtomicRequest::create() {
+@@ -43,10 +45,14 @@ bool DrmAtomicRequest::Set(uint32_t objectId, const DrmProperty& prop, uint64_t
+     return true;
+ }
+ 
+-bool DrmAtomicRequest::Commit(::android::base::borrowed_fd drmFd) {
+-    constexpr const uint32_t kCommitFlags = DRM_MODE_ATOMIC_ALLOW_MODESET;
++bool DrmAtomicRequest::Commit(::android::base::borrowed_fd drmFd, bool nonblocking) {
++    ATRACE_CALL();
++    uint32_t commitFlags = DRM_MODE_ATOMIC_ALLOW_MODESET;
++    if (nonblocking) {
++        commitFlags |= DRM_MODE_ATOMIC_NONBLOCK;
++    }
+ 
+-    int ret = drmModeAtomicCommit(drmFd.get(), mRequest, kCommitFlags, 0);
++    int ret = drmModeAtomicCommit(drmFd.get(), mRequest, commitFlags, 0);
+     if (ret) {
+         ALOGE("%s:%d: atomic commit failed: %s\n", __FUNCTION__, __LINE__, strerror(errno));
+         return false;
+diff --git a/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.h b/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.h
+index 862ea2f2..73597bc4 100644
+--- a/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.h
++++ b/device/generic/goldfish/hals/hwc3/DrmAtomicRequest.h
+@@ -39,7 +39,7 @@ class DrmAtomicRequest {
+ 
+     bool Set(uint32_t objectId, const DrmProperty& prop, uint64_t value);
+ 
+-    bool Commit(::android::base::borrowed_fd drmFd);
++    bool Commit(::android::base::borrowed_fd drmFd, bool nonblocking = false);
+ 
+    private:
+     DrmAtomicRequest(drmModeAtomicReqPtr request) : mRequest(request) {}
 diff --git a/device/generic/goldfish/hals/hwc3/DrmClient.cpp b/device/generic/goldfish/hals/hwc3/DrmClient.cpp
-index a55e94bd..70419f56 100644
+index a55e94bd..613d16a9 100644
 --- a/device/generic/goldfish/hals/hwc3/DrmClient.cpp
 +++ b/device/generic/goldfish/hals/hwc3/DrmClient.cpp
 @@ -16,6 +16,12 @@
@@ -1275,20 +1211,7 @@ index a55e94bd..70419f56 100644
              return false;
          }
  
-@@ -238,8 +289,12 @@ std::tuple<HWC3::Error, std::shared_ptr<DrmBuffer>> DrmClient::create(
-     }
- 
-     DrmPrimeBufferHandle primeHandle = 0;
-+    fprintf(stderr, "WINQ-DRM-CREATE handle=%p fd=%d %ux%u fmt=%" PRIu32 " stride=%" PRIu32 "\\n",
-+            handle, crosHandle->fds[0], crosHandle->width, crosHandle->height,
-+            crosHandle->format, crosHandle->strides[0]); fflush(stderr);
-     int ret = drmPrimeFDToHandle(mFd.get(), crosHandle->fds[0], &primeHandle);
-     if (ret) {
-+        fprintf(stderr, "WINQ-DRM-PRIME fail ret=%d errno=%d\\n", ret, errno); fflush(stderr);
-         ALOGE("%s: drmPrimeFDToHandle failed: %s (errno %d)", __FUNCTION__, strerror(errno), errno);
-         return std::make_tuple(HWC3::Error::NoResources, nullptr);
-     }
-@@ -257,7 +312,32 @@ std::tuple<HWC3::Error, std::shared_ptr<DrmBuffer>> DrmClient::create(
+@@ -257,6 +308,23 @@ std::tuple<HWC3::Error, std::shared_ptr<DrmBuffer>> DrmClient::create(
      ret = drmModeAddFB2(mFd.get(), buffer->mWidth, buffer->mHeight, buffer->mDrmFormat,
                          buffer->mPlaneHandles, buffer->mPlanePitches, buffer->mPlaneOffsets,
                          &framebuffer, 0);
@@ -1297,31 +1220,22 @@ index a55e94bd..70419f56 100644
 +    // Retry the registration with alpha ignored; the underlying BO layout and
 +    // stride are unchanged, and the client target is opaque for this path.
 +    if (ret && buffer->mDrmFormat == DRM_FORMAT_ARGB8888) {
-+        const int savedErrno = errno;
 +        ret = drmModeAddFB2(mFd.get(), buffer->mWidth, buffer->mHeight,
 +                            DRM_FORMAT_XRGB8888, buffer->mPlaneHandles,
 +                            buffer->mPlanePitches, buffer->mPlaneOffsets, &framebuffer, 0);
-+        fprintf(stderr, "WINQ-DRM-ADDFB xrgb-ret=%d errno=%d\\n", ret, errno); fflush(stderr);
 +        if (!ret) {
 +            buffer->mDrmFormat = DRM_FORMAT_XRGB8888;
-+            fprintf(stderr, "WINQ-DRM-ADDFB argb-to-xrgb fallback saved_errno=%d\\n",
-+                    savedErrno); fflush(stderr);
 +        }
 +    }
-     if (ret) {
-+        const int savedErrno = errno;
++    if (ret) {
 +        ret = drmModeAddFB(mFd.get(), buffer->mWidth, buffer->mHeight, 24, 32,
 +                           buffer->mPlanePitches[0], buffer->mPlaneHandles[0], &framebuffer);
-+        fprintf(stderr, "WINQ-DRM-ADDFB legacy-ret=%d errno=%d saved_errno=%d\\n",
-+                ret, errno, savedErrno); fflush(stderr);
 +        if (!ret) buffer->mDrmFormat = DRM_FORMAT_XRGB8888;
 +    }
-+    if (ret) {
-+        fprintf(stderr, "WINQ-DRM-ADDFB fail ret=%d errno=%d\\n", ret, errno); fflush(stderr);
+     if (ret) {
          ALOGE("%s: drmModeAddFB2 failed: %s (errno %d)", __FUNCTION__, strerror(errno), errno);
          return std::make_tuple(HWC3::Error::NoResources, nullptr);
-     }
-@@ -321,7 +401,8 @@ bool DrmClient::handleHotplug() {
+@@ -321,7 +389,8 @@ bool DrmClient::handleHotplug() {
                  .dpiX = display->getDpiX(),
                  .dpiY = display->getDpiY(),
                  .rr = display->getRefreshRateUint(),
@@ -1331,14 +1245,23 @@ index a55e94bd..70419f56 100644
              });
          }
      }
-@@ -352,7 +433,10 @@ std::tuple<HWC3::Error, ::android::base::unique_fd> DrmClient::flushToDisplay(
+@@ -351,8 +420,19 @@ std::tuple<HWC3::Error, ::android::base::unique_fd> DrmClient::flushToDisplay(
+         return std::make_tuple(HWC3::Error::NoResources, ::android::base::unique_fd());
      }
  
++    ATRACE_BEGIN("KikiDrmClient::display_lock");
      AutoReadLock lock(mDisplaysMutex);
 -    return mDisplays[displayId]->flush(mFd, inSyncFd, buffer);
++    ATRACE_END();
++    ATRACE_BEGIN("KikiDrmClient::set_master");
 +    drmSetMaster(mFd.get());
++    ATRACE_END();
++    ATRACE_BEGIN("KikiDrmClient::display_flush");
 +    auto result = mDisplays[displayId]->flush(mFd, inSyncFd, buffer);
++    ATRACE_END();
++    ATRACE_BEGIN("KikiDrmClient::drop_master");
 +    drmDropMaster(mFd.get());
++    ATRACE_END();
 +    return result;
  }
  
@@ -1387,7 +1310,7 @@ index a7b67299..0800a77c 100644
      if (mStatus == DRM_MODE_CONNECTED) {
          std::optional<EdidInfo> maybeEdidInfo = loadEdid(drmFd);
 diff --git a/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp b/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp
-index ed1fa68c..bd495313 100644
+index ed1fa68c..cbc0f3e6 100644
 --- a/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp
 +++ b/device/generic/goldfish/hals/hwc3/DrmDisplay.cpp
 @@ -18,6 +18,10 @@
@@ -1401,7 +1324,7 @@ index ed1fa68c..bd495313 100644
  namespace aidl::android::hardware::graphics::composer3::impl {
  namespace {
  
-@@ -64,8 +68,13 @@ std::unique_ptr<DrmDisplay> DrmDisplay::create(uint32_t id, std::unique_ptr<DrmC
+@@ -64,14 +68,21 @@ std::unique_ptr<DrmDisplay> DrmDisplay::create(uint32_t id, std::unique_ptr<DrmC
          }
      }
  
@@ -1416,7 +1339,36 @@ index ed1fa68c..bd495313 100644
  }
  
  std::tuple<HWC3::Error, ::android::base::unique_fd> DrmDisplay::flush(
-@@ -103,6 +112,32 @@ std::tuple<HWC3::Error, ::android::base::unique_fd> DrmDisplay::flush(
+     ::android::base::borrowed_fd drmFd, ::android::base::borrowed_fd inSyncFd,
+     const std::shared_ptr<DrmBuffer>& buffer) {
++    ATRACE_BEGIN("KikiDrmDisplay::create_request");
+     std::unique_ptr<DrmAtomicRequest> request = DrmAtomicRequest::create();
++    ATRACE_END();
+     if (!request) {
+         ALOGE("%s: failed to create atomic request.", __FUNCTION__);
+         return std::make_tuple(HWC3::Error::NoResources, ::android::base::unique_fd());
+@@ -80,6 +91,7 @@ std::tuple<HWC3::Error, ::android::base::unique_fd> DrmDisplay::flush(
+     int flushFenceFd = -1;
+ 
+     bool okay = true;
++    ATRACE_BEGIN("KikiDrmDisplay::program_request");
+     okay &=
+         request->Set(mCrtc->getId(), mCrtc->getOutFenceProperty(), addressAsUint(&flushFenceFd));
+     okay &= request->Set(mPlane->getId(), mPlane->getCrtcProperty(), mCrtc->getId());
+@@ -96,14 +108,49 @@ std::tuple<HWC3::Error, ::android::base::unique_fd> DrmDisplay::flush(
+     okay &= request->Set(mPlane->getId(), mPlane->getSrcYProperty(), 0);
+     okay &= request->Set(mPlane->getId(), mPlane->getSrcWProperty(), buffer->mWidth << 16);
+     okay &= request->Set(mPlane->getId(), mPlane->getSrcHProperty(), buffer->mHeight << 16);
++    ATRACE_END();
+ 
+-    okay &= request->Commit(drmFd);
++    ATRACE_BEGIN("KikiDrmDisplay::atomic_commit");
++    const bool nonblockingPresent = ::android::base::GetBoolProperty(
++        "ro.vendor.kikiaosp.drm_nonblock_present", false);
++    okay &= request->Commit(drmFd, nonblockingPresent);
++    ATRACE_END();
+     if (!okay) {
+         ALOGE("%s: failed to flush to display.", __FUNCTION__);
          return std::make_tuple(HWC3::Error::NoResources, ::android::base::unique_fd());
      }
  
@@ -1424,6 +1376,7 @@ index ed1fa68c..bd495313 100644
 +    // notifying the window scanout listener. Re-submit the active CRTC and
 +    // mark the same real SurfaceFlinger framebuffer fully dirty when this
 +    // device diagnostic is enabled; this does not synthesize or alter pixels.
++    ATRACE_BEGIN("KikiDrmDisplay::legacy_present");
 +    if (::android::base::GetBoolProperty("ro.kikiaosp.drm_legacy_present", false)) {
 +        drmModeCrtcPtr crtc = drmModeGetCrtc(drmFd.get(), mCrtc->getId());
 +        if (crtc && crtc->mode_valid) {
@@ -1445,11 +1398,15 @@ index ed1fa68c..bd495313 100644
 +        }
 +        if (crtc) drmModeFreeCrtc(crtc);
 +    }
++    ATRACE_END();
 +
++    ATRACE_BEGIN("KikiDrmDisplay::retain_buffer");
      mPreviousBuffer = buffer;
++    ATRACE_END();
  
      DEBUG_LOG("%s: submitted atomic update, flush fence:%d\n", __FUNCTION__, flushFenceFd);
-@@ -160,33 +195,106 @@ DrmHotplugChange DrmDisplay::checkAndHandleHotplug(::android::base::borrowed_fd
+     return std::make_tuple(HWC3::Error::None, ::android::base::unique_fd(flushFenceFd));
+@@ -160,33 +207,106 @@ DrmHotplugChange DrmDisplay::checkAndHandleHotplug(::android::base::borrowed_fd
      DEBUG_LOG("%s: display:%" PRIu32, __FUNCTION__, mId);
  
      const bool oldConnected = mConnector->isConnected();

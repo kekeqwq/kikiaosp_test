@@ -181,7 +181,7 @@ grep -Fq 'ro.kikiaosp.sensor_privacy=true' "$product_mk" || {
   echo "Kiki native-window product must retain sensorless mode while publishing SensorPrivacyService" >&2
   exit 1
 }
-grep -Fqx '    ro.kikiaosp.usage_stats=true \' "$product_mk" || {
+tr -d '\r' < "$product_mk" | grep -Fqx '    ro.kikiaosp.usage_stats=true \' || {
   echo "Kiki native-window product must enable usage-stats core services" >&2
   exit 1
 }
@@ -421,7 +421,8 @@ grep -Fq 'if (mWakeGestureListener == null)' "$wake_policy_src" || {
   exit 1
 }
 find "$REPO_ROOT/overlays" -type f -printf '%P\n' | sort -u > "$tmp/expected-untracked"
-( cd "$AOSP_ROOT"; repo forall -c 'git ls-files --others --exclude-standard | sed "s#^#$REPO_PATH/#"' ) | sed '/^$/d' | sort -u > "$tmp/actual-untracked"
+( cd "$AOSP_ROOT"; repo forall -c 'git ls-files --others --exclude-standard | sed "s#^#$REPO_PATH/#"' ) |
+  sed '/^$/d' | sort -u > "$tmp/actual-untracked"
 if ! diff -u "$tmp/expected-untracked" "$tmp/actual-untracked"; then echo "AOSP untracked files do not exactly match kikiaosp_test/overlays" >&2; exit 1; fi
 if [[ -f "$AOSP_ROOT/out/soong/environment.used" ]]; then
   grep -q '^TARGET_PRODUCT=kikiaosp_test_arm64_phone$' "$AOSP_ROOT/out/soong/environment.used" || { echo "wrong TARGET_PRODUCT" >&2; exit 1; }

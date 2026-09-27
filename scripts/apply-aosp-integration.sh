@@ -5,7 +5,6 @@ REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 [ -d "$AOSP_ROOT/.repo" ] || { echo "not an AOSP checkout: $AOSP_ROOT" >&2; exit 2; }
 "$REPO_ROOT/scripts/sync-device-tree.sh" "$AOSP_ROOT"
 patch -d "$AOSP_ROOT" -p1 --forward < "$REPO_ROOT/patches/aosp-working-tree.patch"
-patch -d "$AOSP_ROOT" -p1 --forward --no-backup-if-mismatch < "$REPO_ROOT/patches/aosp-hwc-nonblock-present.patch"
 while IFS= read -r -d '' src; do
   rel=${src#"$REPO_ROOT/overlays/"}
   mkdir -p "$AOSP_ROOT/$(dirname "$rel")"

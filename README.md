@@ -21,7 +21,7 @@ scripts/                          同步、应用、审计和历史回归工具
 Work_5day.md                      开发过程与实测日志
 ```
 
-所有 Kiki 设备改动先在此仓库维护，再同步进 AOSP 工作树。不要把 Kiki 改动提交到 AOSP 上游仓库。`aosp-working-tree.patch` 是从测试过的 AOSP 工作树一次性生成的；旧的分片补丁不再应用，避免互相重叠。`scripts/audit-aosp-integration.sh` 要求 AOSP tracked 改动恰好由此补丁覆盖，并反向 dry-run 检查其内容。
+所有 Kiki 设备改动先在此仓库维护，再同步进 AOSP 工作树。不要把 Kiki 改动提交到 AOSP 上游仓库。`aosp-working-tree.patch` 是从测试过的 AOSP 工作树一次性生成的，也是 AOSP tracked 改动的唯一应用入口；HWC 的非阻塞提交改动已并入这个完整快照。旧的分片/trace 补丁只留作历史参考，不要再叠加应用。`scripts/audit-aosp-integration.sh` 要求 AOSP tracked 改动恰好由此补丁覆盖，并反向 dry-run 检查其内容。
 
 ## 从新 Linux 构建机准备 Android
 
