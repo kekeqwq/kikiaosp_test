@@ -8,4 +8,12 @@
 
     <!-- Launcher3 Quickstep's widget discovery requires the framework service. -->
     <bool name="config_enableAppWidgetService">true</bool>
+
+    <!--
+        The QEMU virtual display supports up to 120 Hz. Keep the normal Android
+        refresh-rate policy adaptive, but do not let the platform's stock 60 Hz
+        default render-rate cap suppress high-refresh content.
+    -->
+    <integer name="config_defaultRefreshRate">120</integer>
+    <integer name="config_defaultPeakRefreshRate">120</integer>
 </resources>
