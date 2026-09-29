@@ -17,7 +17,7 @@ device/kiki/kikiaosp_test/         本设备及产品定义
 patches/aosp-working-tree.patch   此快照下全部 AOSP tracked 源码改动；唯一应用入口
 overlays/                         AOSP 上游树中新增的少量文件
 manifests/                        已验证的 AOSP 精确项目修订
-scripts/                          同步、应用、审计和历史回归工具
+scripts/                          同步、应用、审计和回归工具；含独立窗口测试镜像重打包器
 Work_5day.md                      开发过程与实测日志
 ```
 
@@ -60,6 +60,8 @@ m -j8 systemimage vendorimage
 ```
 
 构建时按实际内存调整 `-j`；`out/` 应保留用于增量构建。`Ctrl-b d` 脱离 tmux，`tmux a -t kikiaosp-build` 查看；完成后关闭该会话。设备树更新后执行 `scripts/sync-device-tree.sh ~/aosp-master`，然后再次运行两项审计，避免 AOSP 工作树与此仓库版本不一致。上游 AOSP 更新后旧补丁可能不再适用，需要在独立升级分支解决冲突并重测。
+
+`scripts/repack-apk-window-test.sh` 是可选的独立回归镜像工具，用于把源码级 `KikiWindowTest` fixture 注入单独的测试镜像；它不属于常规产品构建，不会把 APK 预装进产品分区。脚本只在 AOSP `out/` 下建立临时工作目录，要求四个输出镜像均不存在后才写入。
 
 如需从当前已测试的 AOSP 工作树收敛新源码改动：
 
