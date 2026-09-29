@@ -35,9 +35,9 @@ PRODUCT_SYSTEM_NAME := KikiAOSP
 PRODUCT_SYSTEM_DEVICE := kikiaosp_test
 PRODUCT_SYSTEM_BRAND := KikiAOSP
 
-# Match the Surface user's preferred Android display density by default.
+# Match the Surface user's current Android display density by default.
 # Window resizing still controls the guest pixel dimensions independently.
-TARGET_SCREEN_DENSITY := 248
+TARGET_SCREEN_DENSITY := 288
 
 # This board has no physical orientation sensor; the overlay keeps display
 # rotation deterministic while preserving the normal WindowManager path.
@@ -74,6 +74,8 @@ PRODUCT_SYSTEM_PROPERTIES += \
     ro.kikiaosp.telephony_registry=true \
     ro.kikiaosp.telecom_loader=false \
     ro.kikiaosp.battery_service=true \
+    persist.sys.timezone=Asia/Shanghai \
+    sys.use_memfd=true \
     debug.hwui.use_buffer_age=false \
     debug.hwui.use_partial_updates=false \
     service.sf.prime_shader_cache=false \
@@ -85,6 +87,8 @@ PRODUCT_SYSTEM_PROPERTIES += \
 PRODUCT_PACKAGES += \
     Launcher3QuickStep \
     Settings \
+    Gallery2 \
+    WallpaperPicker2 \
     SystemUI \
     LatinIME \
     FusedLocation \
@@ -188,6 +192,8 @@ PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     system/bin/linkerconfig \
     system/etc/init/kiki-minimal-native.rc \
     system/etc/init/kiki-adb.rc \
+    system/etc/init/kiki-user-defaults.rc \
+    system/bin/kiki-user-defaults.sh \
     vendor/etc/fstab.ranchu \
     vendor/etc/ueventd.rc \
     vendor/etc/init/hw/init.ranchu.rc
@@ -196,6 +202,8 @@ PRODUCT_COPY_FILES += \
     device/kiki/kikiaosp_test/ueventd.kikiaosp.rc:vendor/etc/ueventd.rc \
     device/kiki/kikiaosp_test/init.ranchu.rc:vendor/etc/init/hw/init.ranchu.rc \
     device/kiki/kikiaosp_test/kiki-adb.rc:system/etc/init/kiki-adb.rc \
+    device/kiki/kikiaosp_test/kiki-user-defaults.rc:system/etc/init/kiki-user-defaults.rc \
+    device/kiki/kikiaosp_test/kiki-user-defaults.sh:system/bin/kiki-user-defaults.sh \
     device/kiki/kikiaosp_test/kiki-minimal-native.rc:system/etc/init/kiki-minimal-native.rc \
     device/kiki/kikiaosp_test/kiki-adb-wait.sh:system/bin/kiki-adb-wait.sh
 

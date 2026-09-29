@@ -50,9 +50,12 @@ for property in \
     require "$product" "$property"
 done
 
-for package in Launcher3QuickStep Settings SystemUI LatinIME librs_jni com.android.hardware.power android.hardware.health-service.example com.android.hardware.audio; do
+for package in Launcher3QuickStep Settings Gallery2 WallpaperPicker2 SystemUI LatinIME librs_jni com.android.hardware.power android.hardware.health-service.example com.android.hardware.audio; do
     require "$product" "    $package"
 done
+require "$product" 'persist.sys.timezone=Asia/Shanghai'
+require "$product" 'sys.use_memfd=true'
+require "$product" 'TARGET_SCREEN_DENSITY := 288'
 ! grep -Fq '    KikiWindowTest' "$product" || \
     fail 'KikiWindowTest is a regression fixture, not a product package'
 require "$product" 'device/kiki/kikiaosp_test/audio/audio_policy_configuration.xml:vendor/etc/audio_policy_configuration.xml'
@@ -82,10 +85,16 @@ require "$adb_wait" 'settings put global device_provisioned 1'
 require "$adb_wait" 'settings --user 0 put secure user_setup_complete 1'
 require "$settings_defaults" '<bool name="def_device_provisioned">true</bool>'
 require "$settings_defaults" '<bool name="def_user_setup_complete">true</bool>'
+require "$settings_defaults" '<item name="def_device_font_scale" format="float" type="dimen">1.5</item>'
+require "$device_dir/kiki-user-defaults.rc" 'start kiki_user_defaults'
+require "$device_dir/kiki-user-defaults.sh" 'key_repeat_timeout 2000'
+require "$device_dir/kiki-user-defaults.sh" 'key_repeat_delay 1000'
 
 require "$board" 'TARGET_2ND_ARCH :='
 require "$board" 'TARGET_SUPPORTS_32_BIT_APPS := false'
 require "$board" 'TARGET_SUPPORTS_64_BIT_APPS := true'
+require "$board" 'BOARD_PRODUCTIMAGE_FILE_SYSTEM_TYPE := erofs'
+require "$board" 'BOARD_SYSTEM_EXTIMAGE_FILE_SYSTEM_TYPE := erofs'
 require "$product" 'PRODUCT_SOONG_NAMESPACES += device/generic/goldfish'
 require "$product" 'com.android.hardware.graphics.composer.ranchu'
 ! grep -Fq 'android.hardware.graphics.composer3-service.ranchu' "$product" || \

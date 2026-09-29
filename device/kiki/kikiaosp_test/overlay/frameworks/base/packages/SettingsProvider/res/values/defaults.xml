@@ -6,7 +6,9 @@
 
     <!-- KikiAOSP is a batteryless, always-on test device. -->
     <bool name="def_stay_on_while_plugged_in">true</bool>
+    <!-- Prevent the 60-second first-boot timeout before power policy settles. -->
+    <integer name="def_screen_off_timeout">2147483647</integer>
 
-    <!-- Match the Surface user's preferred text size on a fresh Settings DB. -->
-    <item name="def_device_font_scale" format="float" type="dimen">1.3</item>
+    <!-- Match the Surface user's current text size on a fresh Settings DB. -->
+    <item name="def_device_font_scale" format="float" type="dimen">1.5</item>
 </resources>
