@@ -1,0 +1,11 @@
+# Device-specific user defaults that need the SettingsProvider Binder API.
+service kiki_user_defaults /system/bin/sh /system/bin/kiki-user-defaults.sh
+    class late_start
+    disabled
+    oneshot
+    seclabel u:r:shell:s0
+    user shell
+    group shell
+
+on property:sys.boot_completed=1
+    start kiki_user_defaults
