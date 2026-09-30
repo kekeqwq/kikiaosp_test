@@ -87,10 +87,59 @@ runs both integration/profile audits. It forces the pure pinned kernel
 derivation to rebuild, builds system/vendor/ramdisk and host tools into the
 new output, then derives boot-v4 from that output's static init and GPT fstab.
 It checks the ACTUAL generated release properties and records hashes/phases.
-`--resume` requires the same paths and commits and reuses only this release
+The local build backend is explicitly `SOONG_NINJA=ninja`. A guarded `out`
+symlink in the NEW source checkout refers only to the exact independent output
+directory. This avoids Siso configuration and absolute-generated-path failures
+without changing upstream Soong. Existing source `out` directories or links to
+any other output are rejected; the development output is never adopted.
+`--resume` requires the same recorded paths and frozen commits and reuses only this release
 output, never a development output. Interrupted integration is not blindly
-reapplied. These are candidate INPUTS: packaging, source/licenses and real
+reapplied. A newer clean pipeline-tool commit may drive resume while the
+original detached device/kernel source commits remain authoritative; record
+that tool commit separately, never pretend newly edited device code was built.
+These are candidate INPUTS: packaging, source/licenses and real
 system acceptance remain separate mandatory gates.
+
+### Clean-input candidate packaging
+
+Only after `build-audit.json` reaches
+`clean-candidate-inputs-built-not-packaged-or-accepted`:
+
+```sh
+python scripts/test-package-clean-release.py
+python scripts/package-clean-release.py \
+  --preparation /path/to/source-preparation-record \
+  --build-record /path/to/release-build-record \
+  --output /new/independent-package-directory
+python scripts/system-package.py --validate \
+  /new/independent-package-directory/KikiAOSP-0.1.0-alpha-arm64.zip
+```
+
+No arbitrary image, old bundle/disk or fixture input option exists. Revalidate
+the actual pinned upstream projects, clean detached sources, tracked integration
+and every integrated device file, finished build target/properties and recorded
+image/boot inputs. Convert only the new output's sparse system/vendor images to
+raw EROFS when needed. Use THIS output's `fsck.erofs` to check file encoding and
+read the release properties/notices from the actual EROFS images, not solely a
+staging directory. Older candidates that did not build that tool must build
+`m fsck.erofs` in the SAME frozen source/relative release out before packaging;
+never substitute a developer's executable.
+
+Record matching AOSP tool hashes and the ACTUAL Nix kernel graph/source/flake
+lock. Generated AOSP notice text is kept verbatim (including third-party CDATA,
+which is not always strict XML), with byte-preserving UTF-8 chunks bounded by
+format-1. Include kernel COPYING/GPL/syscall exception, our device license and
+source identities. This is candidate attribution collection, NOT completion of
+the public corresponding-source/license review. That review remains a gate.
+
+ZIP entries are fixed-time regular files, sorted, with standard deflate/ZIP64
+and no hidden directory/extra role. Build the manifest/source-lock with the
+frozen producer schema hashes and run the canonical semantic/hash/boot/EROFS
+validator on the newly written ZIP. Keep the packaging-tool commit separate
+from the actual built device commit. Write `.sha256` and a local
+`package-audit.json`; the audit can contain local Nix paths, must NOT enter the
+ZIP or be uploaded as a public asset. A validated ZIP is still NOT a boot,
+native consumer, concurrent Dev/release, user-installer or publication result.
 
 `create` requires system package, storage destination, TOTAL capacity and QEMU bin directory (`--qemu`). Performance preset is optional. After creation the capacity/layout/source identity are immutable. `set --size`, reformat, replacing the OS payload or changing partition layout is forbidden in 0.1. KikiEmu accepts `--create`/`--set` command aliases as well.
 
@@ -151,6 +200,15 @@ unfinished older preparation only; it does not change any pinned project
 commit. Build the release identity in independent output only after preparation
 and integration audits pass. Do not package the preparation log or private host
 addresses into a consumer system ZIP.
+
+For interrupted NEW checkouts only, `--resume --repair-missing-indexes` can
+populate an absent index from the exact pinned HEAD using a TEMPORARY index
+and a full status comparison before an exclusive link into place. It does not
+overwrite an existing index/source. Separate `--complete-missing-files` may
+add only genuinely absent tracked files via Git checkout-index without force,
+after verifying there are no existing modifications or untracked files.
+Foreign gitdirs, sparse checkouts, symlink traversal, changed commits and real
+source changes refuse. Full project cleanliness/commit audits still follow.
 
 First version/tag: `0.1.0-alpha` / `v0.1.0-alpha`, GitHub prerelease, with system ZIP and setup.exe in the appropriate two repositories. Freeze candidate source before building; create immutable release tags only for the accepted candidate.
 

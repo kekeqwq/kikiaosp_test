@@ -170,7 +170,7 @@ def main():
     audit["buildBackend"] = "ninja"
     stamp.write_text(json.dumps(audit, indent=2) + "\n")
     if audit["phase"] == "building-aosp":
-        build = f"set -eo pipefail; source build/envsetup.sh; lunch kikiaosp_test_arm64_phone_release-cp2a-userdebug; m -j{args.jobs} systemimage vendorimage ramdisk mkbootfs mkbootimg simg2img"
+        build = f"set -eo pipefail; source build/envsetup.sh; lunch kikiaosp_test_arm64_phone_release-cp2a-userdebug; m -j{args.jobs} systemimage vendorimage ramdisk mkbootfs mkbootimg simg2img fsck.erofs"
         run(["bash", "-c", build], aosp, env)
         phase("building-boot-payload")
     if audit["phase"] == "building-boot-payload":
