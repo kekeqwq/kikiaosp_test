@@ -2,7 +2,15 @@
 
 面向 Windows ARM64 QEMU/WHPX 的 Android 17 测试设备。设备身份 `kikiaosp_test`，系统身份 `KikiAOSP`，产品目标 **`kikiaosp_test_arm64_phone-cp2a-userdebug`**；不是 Cuttlefish 手机产品。
 
-本仓库只负责 AOSP 设备树、集成补丁、精确 manifest、审计和镜像构建。[kikiaosp_kernel](https://github.com/kekeqwq/kikiaosp_kernel) 负责内核；[KikiEmu](https://github.com/kekeqwq/KikiEmu) 负责 Windows ARM64 QEMU/相机桥接的源码构建、收集校验、打包及本地测试。Linux 开发机不承担最终 QEMU 测试。
+本仓库负责 AOSP 设备树、集成补丁、精确 manifest、审计和镜像构建，并维护系统安装包标准及干净打包/发版流程（0.1当前处于规划阶段）。[kikiaosp_kernel](https://github.com/kekeqwq/kikiaosp_kernel) 负责内核；[KikiEmu](https://github.com/kekeqwq/KikiEmu) 负责 Windows ARM64 QEMU/相机桥接的源码构建、开发资产收集校验、本地测试，以及终端用户的安装器/实例管理/系统包消费。Linux 开发机不承担最终 QEMU 测试。
+
+## 0.1 Alpha 发布规划与固定协议
+
+当前处于规划阶段，尚未构建或公开 0.1 发布包。[RELEASE_FORMAT.md](RELEASE_FORMAT.md) 是本仓库维护的系统安装包格式草案；[RELEASE_POLICY.md](RELEASE_POLICY.md) 约束干净构建、许可/来源、版本演进、发布门槛，以及正式实例运行期间可安全推进开发的隔离要求。KikiEmu 消费同一合同，不能另行猜测文件名或私自更换包形式。原型通过后冻结 format version 1，由 schema、语义检查和双方兼容性测试强制执行。
+
+公开交付仅包含干净生成的系统安装材料（配套 kernel/initramfs 的 boot payload、EROFS system/vendor、清单及来源/许可）；不发布整盘、userdata、已初始化 misc/metadata 或旧支持 tarball。用户通过 KikiEmu 自行创建固定总容量、动态占用的磁盘，再安装系统。容量只在 create 时选择，创建后不可 set；内存/vCPU 等运行资源配置下次启动生效。
+
+正式版在发版前完成 KikiEmu 窗口、KikiAOSP 版本/型号/构建身份、实例 serial/channel、独立 ADB/控制/相机端点和私有运行库的隔离。名字不是安全边界；开发工具必须拒绝误选正式实例。正式实例使用中的并行开发回归是强制发版门槛，不能等用户受影响后再补发修复版。
 
 ## 当前已验收主线 — 2026-09-30
 
@@ -83,7 +91,7 @@ tmux 中运行长构建，SSH 断开不影响任务；`Ctrl-b d` 脱离、`tmux 
 
 本次 ThemePicker 构建共 5 分 16 秒，其中实际 ninja 执行 138 个增量步骤，不是完整重编。CP2A BoardConfig 将 product/system_ext 内容集成进 system；不要把旧独立分区的 WallpaperPicker2 误当当前运行应用。
 
-## 镜像交付与冻结资产
+## 历史开发镜像与冻结资产（不是公开发版格式）
 
 正常产出为 `out/target/product/kikiaosp_test/{system,vendor}.img`。新产物另建清单并在 Windows 实测后才能替换默认基线。当前已验收文件固定于本仓库未追踪的 `output/`：
 
@@ -98,6 +106,8 @@ kikiaosp-runtime-support-20260926.tar.zst
 后两份分区是当前冻结启动配对的兼容辅助磁盘；实际 CP2A 内容在 system 内。辅助包 SHA-256 `a8073fe77fc1e8a4e52f24af776955d6d9eae4ef5bd848d9dc703d8d4f1c363b`，含冻结 ramdisk、8 GiB F2FS userdata、misc 和空辅助盘。它不是 `m systemimage vendorimage` 的自动产物，字节一致 ramdisk 的源码重建配方尚未完成。二进制不进 Git，换构建机须另外迁移这些冻结资产；不要假设只 clone 仓库就拿到了它们。
 
 内核在其独立仓库执行 `nix build`；Windows ARM64 QEMU 的固定上游提交、补丁、MSYS2 CLANGARM64 配方、相机桥接、SSH 收集器及启动命令均以 [KikiEmu README](https://github.com/kekeqwq/KikiEmu) 为准。三个仓库不混放职责。130 已退出当前构建，185 承担 Linux 构建，本地 Surface 做最终测试。
+
+以上冻结文件只服务现有开发基线回溯，禁止作为 0.1 公开系统包的输入直接重新压缩/改名交付。发版必须补齐完整 ramdisk/boot 的源码生成配方，采用独立发布输出、精确 source-lock 和新的合同验证器；用户数据及空盘均由客户端全新创建。不得复用开发 userdata 或使用户实例引用开发目录中的资产。
 
 ## 开发与隐私
 
