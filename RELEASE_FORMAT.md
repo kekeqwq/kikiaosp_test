@@ -1,6 +1,6 @@
 # KikiAOSP system package contract — version 1 proposal
 
-Status: planning draft, 2026-09-30. No version-1 package has been built or accepted yet. Freeze this contract only after the first producer/consumer installation prototype passes. The existing development bundle is NOT this format.
+Status: implementation draft, 2026-09-30. No version-1 package has been built or accepted yet. Freeze this contract only after the first producer/consumer installation prototype passes. The existing development bundle is NOT this format.
 
 This document belongs to `kikiaosp_test`, the producer of system installation materials. `KikiEmu` implements the reader/installer against the same versioned contract. Do not independently redefine it in the launcher repository.
 
@@ -55,7 +55,7 @@ The manifest must NOT supply arbitrary executable commands, QEMU arguments, file
 
 ## 4. User-created disk contract
 
-`kikiemu create --system <zip> --storage <directory> --size <capacity>` creates a NEW standalone QCOW2 disk with no backing dependency on the ZIP, a developer directory, or the program installation directory. Preallocation is off. The capacity is the TOTAL virtual phone storage, not just `/data`, and becomes immutable when creation succeeds.
+`kikiemu create --system <zip> --storage <directory> --size <capacity> --qemu <bin-directory>` creates a NEW standalone QCOW2 disk with no backing dependency on the ZIP, a developer directory, or the program installation directory. QEMU is explicitly user-provided; its validated directory binding is launcher configuration, not an executable path supplied by this manifest. Preallocation is off. The capacity is the TOTAL virtual phone storage, not just `/data`, and becomes immutable when creation succeeds.
 
 Proposed partition labels: `boot`, `system`, `vendor`, `misc`, `userdata`. GPT headers, alignment, reserved ranges and every partition are inside the declared total. Partition sizes derive from the manifest and installation algorithm; remaining usable aligned space goes to a fresh F2FS userdata partition. If proven required, another runtime-created service partition must be declared in the jointly approved layout BEFORE version 1 freezes. Do not distribute preformatted service/user disks.
 
@@ -65,7 +65,7 @@ Filesystem formatting must use the actual new userdata partition. Choosing 200 G
 
 CLI suffix `g` means GiB (2^30 bytes); publish this in English help. 128 and 200 are examples, not fixed presets or defaults. Guest available capacity excludes system/service partitions and filesystem overhead. Host physical use includes allocated QCOW2 clusters, metadata, cache and logs; neither exact equality with guest used bytes nor immediate space reclamation after deletion is guaranteed.
 
-Changing virtual disk size, partition layout, system payloads or product identity through `set` is prohibited. Detect external size/layout modification at startup and refuse to boot rather than silently repairing, resizing or formatting an established instance.
+Changing virtual disk size, partition layout, system payloads or product identity through `set` is prohibited. A validated `set --qemu` may change the launcher runtime binding for the NEXT start, but may not change this installed disk ABI or invoke a silent migration. Detect external size/layout modification at startup and refuse to boot rather than silently repairing, resizing or formatting an established instance.
 
 ## 5. Reader and compatibility rules
 

@@ -1,6 +1,6 @@
 # KikiAOSP 0.1 Alpha release policy
 
-Status: planning draft, 2026-09-30. This records agreed release constraints and proposed implementation gates; it is not a claim that packaging, installation or release isolation has already been implemented.
+Status: implementation draft, 2026-09-30. This records agreed release constraints and implementation gates; it is not a claim that packaging, installation or release isolation has already passed acceptance.
 
 The user-agreed constraints (clean installation materials only, user-created immutable total capacity, English product text and safe development while releases run) are mandatory. The proposed boot/GPT encoding remains a technical draft pending prototype validation; that does not permit relaxing these constraints to ship a developer disk or postpone isolation.
 
@@ -9,7 +9,7 @@ The user-agreed constraints (clean installation materials only, user-created imm
 - `kikiaosp_test`: canonical system-package contract, device release configuration, complete initramfs/boot payload recipe, exact source lock, system-package producer/validator, and the system ZIP published to this repository's Releases.
 - `kikiaosp_kernel`: reproducible mainline kernel configuration, source fetching and patches. Provide an exact source identity and kernel artifact for the system producer; users do not separately assemble kernels.
 - `KikiEmu`: package consumer/installer, native ARM64 CLI and desktop entry, QEMU patches/runtime, camera bridge, Windows installer/uninstaller, runtime isolation and acceptance tests. Publish setup.exe to its Releases.
-- End users download TWO required assets: the system ZIP and setup.exe. Checksums and corresponding source/provenance are additional release materials, not more manually assembled runtime components.
+- End users download TWO project release assets: the system ZIP and setup.exe. QEMU is user-provided through required `create --qemu <bin-directory>`; the KikiEmu README documents a matching patched native ARM64 build and self-contained runtime directory. Checksums and corresponding source/provenance are additional release materials. Users do not manually assemble Android disks.
 - Brand: `KikiAOSP` system and `KikiEmu` launcher/window/CLI. Self-authored new code defaults to GPL-2.0-or-later. Keep each third-party component's original licenses, notices and applicable corresponding source; GPL does not remove third-party ownership obligations. Original mascot artwork must not copy Google's Android robot/logo.
 
 ## Clean release construction
@@ -45,9 +45,9 @@ Allocate collision-safe per-instance loopback endpoints or namespaced pipes; do 
 
 ### Development while an installed release is in use
 
-This is a permanent release invariant, not a task deferred until the first repair. An installed release is pinned to immutable OS/boot identity and a privately packaged, versioned runtime. Development does not read or write release installation directories, user disks, default-instance selection, authorized keys, mutexes or endpoint registrations. No development tool may select release targets merely because they are the only connected ADB transport or the only QEMU process.
+This is a permanent release invariant, not a task deferred until the first repair. An installed release is pinned to immutable OS/boot identity and the validated user-configured QEMU bin/runtime identity. Development does not read or write that release runtime, release installation directories, user disks, default-instance selection, authorized keys, mutexes or endpoint registrations. No development tool may select release targets merely because they are the only connected ADB transport or the only QEMU process.
 
-Ship required runtime libraries in the program's private/versioned directory; do not depend on the developer's mutable MSYS2 DLL directory or globally overwrite it while a release runs. Building/installing a Dev QEMU, kernel, device tree or launcher never updates a running installed release. Installing a future launcher release must not replace an in-use runtime; existing instances retain their compatible runtime until an explicit supported update.
+Ship launcher-owned libraries privately. User-provided QEMU must have its required dependencies in its own validated bin/runtime directory; do not add a developer's MSYS2 DLL directory or search PATH as a fallback. Save normalized paths and pinned byte identities at create/set and revalidate before start. Building/installing a Dev QEMU uses a separate output directory, never updates a running installed release or its configured runtime. Installing a future launcher release must not replace it; existing instances retain their compatible binding until explicit `set --qemu` passes validation for the next start.
 
 Keep release/dev package channels, launch modes and registry namespaces distinct. A developer command against a release UUID/endpoint must fail closed; a debug package must not be installed by the public release path. Operations use exact UUID, executable path, process creation identity and owned control/ADB endpoints. ADB branding improves observability but is not the authority check.
 
@@ -59,22 +59,23 @@ Release and development channels are frozen into package/build metadata; a confi
 
 ## Mutable vs immutable configuration
 
-`create` requires system package, storage destination and TOTAL capacity. Performance preset is optional. After creation the capacity/layout/source identity are immutable. `set --size`, reformat, replacing the OS payload or changing partition layout is forbidden in 0.1.
+`create` requires system package, storage destination, TOTAL capacity and QEMU bin directory (`--qemu`). Performance preset is optional. After creation the capacity/layout/source identity are immutable. `set --size`, reformat, replacing the OS payload or changing partition layout is forbidden in 0.1. KikiEmu accepts `--create`/`--set` command aliases as well.
 
-`set --default NN` changes manager selection. Resource settings such as `--mem`, `--cpus` and a validated `--performance` preset are configurable and translate to supported QEMU launch parameters. All changes apply on the NEXT start; they are not advertised as QMP live hotplug. Reject arbitrary raw QEMU arguments and dangerous/backend/ABI overrides.
+`set --default NN` changes manager selection. Resource settings such as `--mem`, `--cpus` and a validated `--performance` preset are configurable and translate to supported QEMU launch parameters. `set --id NN --qemu <bin-directory>` validates and atomically replaces the saved QEMU binding. All changes apply on the NEXT start; a running process keeps its original executable/dependencies/configuration. Reject arbitrary raw QEMU arguments and dangerous/backend/ABI overrides.
 
 Presets preserve the same validated SDL/VirGL/120-Hz/native-resolution behavior. Proposed budgets: default 8vCPU/4GiB, medium 8vCPU/6GiB, high 10vCPU/8GiB, with host-aware validation. Do not invent additional GPUs or lower resolution to manufacture a higher FPS claim. All product-owned CLI/installer/dialog/startup messages are English.
 
 ## Publication gates
 
 - Schema/semantic and negative package tests pass in BOTH repositories; exact contract/source revisions are recorded.
-- From a clean Windows ARM64 user environment, install setup.exe, create instances at several capacities, delete the original ZIP and successfully boot via the desktop shortcut directly into the native boot console and desktop.
+- The user owns setup.exe installation/uninstallation, PATH/shortcut and CLI create/set acceptance. The agent supplies the built candidate and documentation, runs build checks and system verification, but does not execute setup.exe or change the user's PATH. Record user acceptance separately; do not claim it as agent-tested.
+- User acceptance: in a clean Windows ARM64 environment, install setup.exe, create instances at several capacities with an explicit QEMU bin path, delete the original ZIP and successfully boot via the desktop shortcut directly into the native boot console and desktop. Test valid/invalid `set --qemu`, missing/changed dependencies and next-start-only rebinding.
 - Confirm actual total virtual capacity, real F2FS data capacity, sparse host usage and successful fresh initialization. Install an APK/save a photo, shut down normally, reopen, and verify persistence.
 - Changing memory/CPU affects the next boot. Unsupported capacity changes and concurrent access to the same disk are refused. Double-clicking an already-running instance activates its window rather than opening a second writer.
 - Native GUI/input/keyboard/Ethernet/audio/front-rear camera/Settings/files/ThemePicker/120-Hz mode regressions pass on the tested Surface. No extra console/Grab window and no silent software fallback. Keep known latency/security limits in release notes.
 - Release/dev parallel-isolation tests pass, including ADB, camera conflicts, process selection and restarting Dev. If both request a physical camera, report ownership/busy instead of stealing it.
 - Uninstall removes application binaries, owned PATH entry and shortcuts only; keep user disks and data by default. Reinstall can recover retained instance records.
-- Installation dependencies and corresponding source/license materials are complete. Do not assume the recipient already has the developer's MSYS2 PATH or custom host GL installation.
+- Launcher dependencies and corresponding source/license materials are complete. QEMU build/deployment and host GL prerequisites are documented and checked; do not assume the recipient has the developer's MSYS2 PATH or custom host GL installation. Uninstall does not delete user-provided QEMU.
 
 ## Version/tag/asset discipline
 

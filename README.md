@@ -2,11 +2,13 @@
 
 面向 Windows ARM64 QEMU/WHPX 的 Android 17 测试设备。设备身份 `kikiaosp_test`，系统身份 `KikiAOSP`，产品目标 **`kikiaosp_test_arm64_phone-cp2a-userdebug`**；不是 Cuttlefish 手机产品。
 
-本仓库负责 AOSP 设备树、集成补丁、精确 manifest、审计和镜像构建，并维护系统安装包标准及干净打包/发版流程（0.1当前处于规划阶段）。[kikiaosp_kernel](https://github.com/kekeqwq/kikiaosp_kernel) 负责内核；[KikiEmu](https://github.com/kekeqwq/KikiEmu) 负责 Windows ARM64 QEMU/相机桥接的源码构建、开发资产收集校验、本地测试，以及终端用户的安装器/实例管理/系统包消费。Linux 开发机不承担最终 QEMU 测试。
+本仓库负责 AOSP 设备树、集成补丁、精确 manifest、审计和镜像构建，并维护系统安装包标准及干净打包/发版流程（0.1已开始独立分支实现，尚未发版）。[kikiaosp_kernel](https://github.com/kekeqwq/kikiaosp_kernel) 负责内核；[KikiEmu](https://github.com/kekeqwq/KikiEmu) 负责 Windows ARM64 QEMU/相机桥接的源码构建、开发资产收集校验、本地测试，以及终端用户的配置管理器/系统安装器/桌面启动入口。Linux 开发机不承担最终 QEMU 测试。
 
 ## 0.1 Alpha 发布规划与固定协议
 
-当前处于规划阶段，尚未构建或公开 0.1 发布包。[RELEASE_FORMAT.md](RELEASE_FORMAT.md) 是本仓库维护的系统安装包格式草案；[RELEASE_POLICY.md](RELEASE_POLICY.md) 约束干净构建、许可/来源、版本演进、发布门槛，以及正式实例运行期间可安全推进开发的隔离要求。KikiEmu 消费同一合同，不能另行猜测文件名或私自更换包形式。原型通过后冻结 format version 1，由 schema、语义检查和双方兼容性测试强制执行。
+0.1 已在独立分支开始实现，尚未构建或公开已验收的发布包。[RELEASE_FORMAT.md](RELEASE_FORMAT.md) 是本仓库维护的系统安装包格式草案；[RELEASE_POLICY.md](RELEASE_POLICY.md) 约束干净构建、许可/来源、版本演进、发布门槛，以及正式实例运行期间可安全推进开发的隔离要求。KikiEmu 消费同一合同，不能另行猜测文件名或私自更换包形式。原型通过后冻结 format version 1，由 schema、语义检查和双方兼容性测试强制执行。
+
+系统包与运行器独立模块化：本仓库的 ZIP 只交付系统必需文件、配套内核/initramfs 与来源/许可记录，不包含 QEMU、Windows 程序或用户磁盘。KikiEmu 的 create 另要求 `--qemu <bin目录>`；set 可更换兼容 QEMU 路径，下次启动生效，不改变已有系统/磁盘 ABI。合适的原生 ARM64 QEMU 构建/运行目录导出步骤由 [KikiEmu README](https://github.com/kekeqwq/KikiEmu) 维护。setup.exe/CLI 的用户视角验收交由用户，开发侧负责构建检查和系统本身验证，未收到验收结论前不公开发版。
 
 公开交付仅包含干净生成的系统安装材料（配套 kernel/initramfs 的 boot payload、EROFS system/vendor、清单及来源/许可）；不发布整盘、userdata、已初始化 misc/metadata 或旧支持 tarball。用户通过 KikiEmu 自行创建固定总容量、动态占用的磁盘，再安装系统。容量只在 create 时选择，创建后不可 set；内存/vCPU 等运行资源配置下次启动生效。
 
