@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 import xml.etree.ElementTree as ET
 from urllib.parse import urljoin, urlparse
 
@@ -87,6 +88,52 @@ def seed_reference_boundaries(base, checkout, raw):
     return count
 
 
+def repair_missing_indexes(checkout, raw, env):
+    """Repair ONLY absent indexes whose existing files exactly match the pin.
+
+    read-tree without -u never writes worktree files. Use a temporary index to
+    verify every tracked/untracked file before CREATE_NEW-linking it into place.
+    Existing indexes, source edits, sparse checkouts and foreign gitdirs refuse.
+    This is explicit recovery for interrupted NEW repo clients, not git reset.
+    """
+    count = 0
+    metadata_root = checkout / ".repo/projects"
+    for item in ET.fromstring(raw).findall("project"):
+        path, commit = item.get("path", item.get("name")), item.get("revision", "")
+        if (not path or path.startswith("/") or any(part in ("", ".", "..") for part in path.split("/"))
+                or not re.fullmatch("[0-9a-f]{40}", commit)):
+            raise ValueError("Unsafe/unpinned project in index recovery.")
+        gitdir = metadata_root / (path + ".git")
+        index = gitdir / "index"
+        if os.path.lexists(index):
+            continue
+        worktree = checkout / path
+        actual = subprocess.check_output(["git", "rev-parse", "--absolute-git-dir"], cwd=worktree, env=env).decode().strip()
+        if (Path(actual).resolve() != gitdir.resolve() or metadata_root.resolve() not in gitdir.resolve().parents
+                or checkout.resolve() not in worktree.resolve().parents):
+            raise ValueError("Index recovery may touch only this new client's own project gitdir.")
+        head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=worktree, env=env).decode().strip()
+        sparse = subprocess.run(["git", "config", "--bool", "--get", "core.sparseCheckout"],
+                                cwd=worktree, env=env, stdout=subprocess.PIPE, check=False)
+        if head != commit or sparse.stdout.strip() == b"true":
+            raise ValueError("Index recovery requires the exact pinned HEAD and a complete worktree.")
+        with tempfile.TemporaryDirectory(prefix=".kiki-index-recovery-", dir=gitdir) as temporary:
+            candidate = Path(temporary) / "index"
+            isolated = dict(env, GIT_INDEX_FILE=str(candidate))
+            subprocess.run(["git", "-c", "core.splitIndex=false", "read-tree", commit],
+                           cwd=worktree, env=isolated, check=True)
+            dirty = subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=normal"],
+                                            cwd=worktree, env=isolated)
+            if dirty.strip():
+                raise ValueError(f"Files in {path} differ from the pin; refusing missing-index recovery.")
+            # link fails if another process created ANY index, including a
+            # dangling symlink. Never replace an existing index or worktree.
+            os.link(candidate, index)
+        count += 1
+        print("VERIFIED_MISSING_INDEX_RECOVERED:", path, flush=True)
+    return count
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline", required=True, type=Path)
@@ -97,6 +144,8 @@ def main():
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--repair-relative-remotes", action="store_true",
                         help="Explicitly migrate an earlier local-manifest preparation; preserve every pinned revision")
+    parser.add_argument("--repair-missing-indexes", action="store_true",
+                        help="Explicit recovery: rebuild only absent indexes after comparing existing files to each exact pin")
     args = parser.parse_args()
     base = args.baseline.resolve(strict=True)
     checkout = args.checkout.resolve()
@@ -117,6 +166,8 @@ def main():
         raise ValueError("The baseline's pinned repo launcher is missing.")
     if args.repair_relative_remotes and not args.resume:
         raise ValueError("Manifest repair requires --resume.")
+    if args.repair_missing_indexes and not args.resume:
+        raise ValueError("Index recovery requires an explicit --resume.")
     origin = run(["git", "remote", "get-url", "origin"], base / ".repo/manifests", env, True).decode().strip()
     if not args.resume:
         raw = run([launcher, "manifest", "-r"], base, env, True)
@@ -177,6 +228,10 @@ def main():
     actual_projects = {item.get("path", item.get("name")): item.get("revision") for item in ET.fromstring(actual).findall("project")}
     if actual_projects != expected_projects:
         raise ValueError("Independent checkout differs from the pinned project commits.")
+    if args.repair_missing_indexes:
+        if metadata["status"] != "preparing-source-not-built":
+            raise ValueError("Index recovery is restricted to unfinished source preparation.")
+        repair_missing_indexes(checkout, raw, env)
     dirty = run([launcher, "forall", "-c", "git status --porcelain --untracked-files=normal"], checkout, env, True)
     if dirty.strip():
         raise ValueError("Fresh upstream checkout has uncommitted files; refusing release preparation.")
