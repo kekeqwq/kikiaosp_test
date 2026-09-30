@@ -10,6 +10,8 @@
 
 系统包与运行器独立模块化：本仓库的 ZIP 只交付系统必需文件、配套内核/initramfs 与来源/许可记录，不包含 QEMU、Windows 程序或用户磁盘。KikiEmu 的 create 另要求 `--qemu <bin目录>`；set 可更换兼容 QEMU 路径，下次启动生效，不改变已有系统/磁盘 ABI。合适的原生 ARM64 QEMU 构建/运行目录导出步骤由 [KikiEmu README](https://github.com/kekeqwq/KikiEmu) 维护。setup.exe/CLI 的用户视角验收交由用户，开发侧负责构建检查和系统本身验证，未收到验收结论前不公开发版。
 
+已经新增并实测 [源码生成 boot/initramfs 的开发原型](docs/BOOT_PAYLOAD.md)：当前产品的静态 first-stage init + tracked fstab + AOSP mkbootfs/mkbootimg，不使用历史 recovery ramdisk。旧多盘开发 ABI 下已启动到真实 Android UI，重复生成哈希一致；但单盘 GPT、新用户数据初始化、干净发行输出仍待实现/验证，不能将该原型当成发行包。
+
 公开交付仅包含干净生成的系统安装材料（配套 kernel/initramfs 的 boot payload、EROFS system/vendor、清单及来源/许可）；不发布整盘、userdata、已初始化 misc/metadata 或旧支持 tarball。用户通过 KikiEmu 自行创建固定总容量、动态占用的磁盘，再安装系统。容量只在 create 时选择，创建后不可 set；内存/vCPU 等运行资源配置下次启动生效。
 
 正式版在发版前完成 KikiEmu 窗口、KikiAOSP 版本/型号/构建身份、实例 serial/channel、独立 ADB/控制/相机端点和私有运行库的隔离。名字不是安全边界；开发工具必须拒绝误选正式实例。正式实例使用中的并行开发回归是强制发版门槛，不能等用户受影响后再补发修复版。
