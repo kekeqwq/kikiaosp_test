@@ -6,6 +6,8 @@
 
 ## 0.1 Alpha 发布规划与固定协议
 
+干净发行构建另选 `kikiaosp_test_arm64_phone_release-cp2a-userdebug`，设备仍为 `kikiaosp_test`；普通 phone 目标保留为 Dev。先完成 `scripts/prepare-clean-release.py` 的冻结源码审计，再用 `scripts/build-clean-release.py` 在新的独立输出中重建内核、system/vendor 和源码生成的 initramfs/boot-v4。完整命令、阶段记录及严格恢复规则见 [RELEASE_POLICY.md](RELEASE_POLICY.md#clean-release-build-target-and-pipeline)。这条新流水线产出的是候选输入，不等于 ZIP 打包或系统验收完成，旧开发 bundle 不参与发版。
+
 0.1 已在独立分支开始实现，尚未构建或公开已验收的发布包。[RELEASE_FORMAT.md](RELEASE_FORMAT.md) 是本仓库维护的系统安装包格式草案；[RELEASE_POLICY.md](RELEASE_POLICY.md) 约束干净构建、许可/来源、版本演进、发布门槛，以及正式实例运行期间可安全推进开发的隔离要求。KikiEmu 消费同一合同，不能另行猜测文件名或私自更换包形式。原型通过后冻结 format version 1，由 schema、语义检查和双方兼容性测试强制执行。
 
 系统包与运行器独立模块化：本仓库的 ZIP 只交付系统必需文件、配套内核/initramfs 与来源/许可记录，不包含 QEMU、Windows 程序或用户磁盘。KikiEmu 的 create 另要求 `--qemu <bin目录>`；set 可更换兼容 QEMU 路径，下次启动生效，不改变已有系统/磁盘 ABI。合适的原生 ARM64 QEMU 构建/运行目录导出步骤由 [KikiEmu README](https://github.com/kekeqwq/KikiEmu) 维护。setup.exe/CLI 的用户视角验收交由用户，开发侧负责构建检查和系统本身验证，未收到验收结论前不公开发版。

@@ -59,6 +59,39 @@ Release and development channels are frozen into package/build metadata; a confi
 
 ## Mutable vs immutable configuration
 
+### Clean release build target and pipeline
+
+The ordinary `kikiaosp_test_arm64_phone-cp2a-userdebug` target remains Dev.
+Its optional channel property defaults to `dev`; a release target inherits
+the same minimal composition, device name and boot ABI, without replacing the
+ordinary target. Select `kikiaosp_test_arm64_phone_release-cp2a-userdebug` ONLY
+in a prepared independent source/output tree. Its model is KikiAOSP 0.1 Alpha,
+channel `release`, system version `0.1.0-alpha` and explicit Android 17
+fingerprint. Product properties override Android's optional defaults using
+the upstream property mechanism, not edits to upstream build scripts.
+
+After `prepare-clean-release.py` reports `CLEAN_PINNED_SOURCE_READY`, run:
+
+```sh
+python scripts/build-clean-release.py \
+  --preparation /path/to/source-preparation-record \
+  --kernel-repo /path/to/kikiaosp_kernel \
+  --output /new/independent-aosp-output \
+  --record /new/release-build-record --jobs 8
+```
+
+The pipeline rechecks the exact full-commit upstream manifest and pristine
+checkout, freezes clean device/kernel commits into detached worktrees,
+requires space for independent output, applies only tracked integration and
+runs both integration/profile audits. It forces the pure pinned kernel
+derivation to rebuild, builds system/vendor/ramdisk and host tools into the
+new output, then derives boot-v4 from that output's static init and GPT fstab.
+It checks the ACTUAL generated release properties and records hashes/phases.
+`--resume` requires the same paths and commits and reuses only this release
+output, never a development output. Interrupted integration is not blindly
+reapplied. These are candidate INPUTS: packaging, source/licenses and real
+system acceptance remain separate mandatory gates.
+
 `create` requires system package, storage destination, TOTAL capacity and QEMU bin directory (`--qemu`). Performance preset is optional. After creation the capacity/layout/source identity are immutable. `set --size`, reformat, replacing the OS payload or changing partition layout is forbidden in 0.1. KikiEmu accepts `--create`/`--set` command aliases as well.
 
 `set --default NN` changes manager selection. Resource settings such as `--mem`, `--cpus` and a validated `--performance` preset are configurable and translate to supported QEMU launch parameters. `set --id NN --qemu <bin-directory>` validates and atomically replaces the saved QEMU binding. All changes apply on the NEXT start; a running process keeps its original executable/dependencies/configuration. Reject arbitrary raw QEMU arguments and dangerous/backend/ABI overrides.
