@@ -58,6 +58,7 @@ PRODUCT_PRODUCT_PROPERTIES += \
 # profile. In particular, no init rule below may stop netd, audio, graphics,
 # storage, KeyMint, or other Android native services.
 PRODUCT_SYSTEM_PROPERTIES += \
+    ro.kikiaosp.exact_storage_size=true \
     ro.kikiaosp.bootstrap_only=false \
     ro.kikiaosp.minimal_services=false \
     ro.kikiaosp.single_mount_namespace=true \

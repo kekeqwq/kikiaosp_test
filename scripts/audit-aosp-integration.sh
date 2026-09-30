@@ -12,6 +12,7 @@ integration_patches=(
   "$REPO_ROOT/patches/aosp-kikiaosp-virgl-context-before-prime.patch"
   "$REPO_ROOT/patches/aosp-kikiaosp-virgl-cpu-camera-yuv.patch"
   "$REPO_ROOT/patches/aosp-kikiaosp-init-virtio-boot-uuid.patch"
+  "$REPO_ROOT/patches/aosp-kikiaosp-exact-storage-size.patch"
 )
 : > "$tmp/expected"
 for integration_patch in "${integration_patches[@]}"; do
@@ -58,6 +59,16 @@ git -C "$AOSP_ROOT" apply --reverse --check \
   exit 1
 }
 camera_main="$AOSP_ROOT/device/kiki/kikiaosp_test/camera/kikiaosp_main.cpp"
+git -C "$AOSP_ROOT" apply --reverse --check \
+  "$REPO_ROOT/patches/aosp-kikiaosp-exact-storage-size.patch" || {
+  echo "AOSP source does not match the exact KikiAOSP storage-capacity patch" >&2
+  exit 1
+}
+grep -Fq 'ro.kikiaosp.exact_storage_size=true' \
+  "$AOSP_ROOT/device/kiki/kikiaosp_test/kikiaosp_test_arm64_phone.mk" || {
+  echo "KikiAOSP must preserve the user-created disk capacity without phone-tier rounding" >&2
+  exit 1
+}
 grep -Fq 'constexpr int32_t kWindowsFrameSensorOrientation = 0;' "$camera_main" && \
   [[ $(grep -c 'kWindowsFrameSensorOrientation};' "$camera_main") -eq 2 ]] || {
   echo "Both Surface cameras must report the orientation of upright Windows frames" >&2

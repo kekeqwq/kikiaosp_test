@@ -1,0 +1,59 @@
+diff --git a/frameworks/base/core/java/android/os/storage/StorageManager.java b/frameworks/base/core/java/android/os/storage/StorageManager.java
+--- a/frameworks/base/core/java/android/os/storage/StorageManager.java
++++ b/frameworks/base/core/java/android/os/storage/StorageManager.java
+@@ -1394,15 +1394,35 @@ public class StorageManager {
+ 
+     /** @hide */
+     public static Pair<String, Long> getPrimaryStoragePathAndSize() {
++        return Pair.create(null, getPrimaryStorageSizeBytes());
++    }
++
++    private static long getPrimaryStorageSizeBytes() {
++        if (SystemProperties.getBoolean("ro.kikiaosp.exact_storage_size", false)) {
++            // KikiEmu disks have arbitrary immutable capacities, not phone
++            // marketing tiers. Vold follows /data to its parent block disk.
++            final IStorageManager storage = IStorageManager.Stub.asInterface(
++                    ServiceManager.getService("mount"));
++            if (storage == null) {
++                throw new IllegalStateException("Storage service is not ready");
++            }
++            try {
++                final long bytes = storage.getInternalStorageBlockDeviceSize();
++                if (bytes <= 0 || bytes < Environment.getDataDirectory().getTotalSpace()) {
++                    throw new IllegalStateException("Invalid internal block device capacity");
++                }
++                return bytes;
++            } catch (RemoteException e) {
++                throw e.rethrowFromSystemServer();
++            }
++        }
+-        return Pair.create(null,
+-                FileUtils.roundStorageSize(Environment.getDataDirectory().getTotalSpace()
+-                        + Environment.getRootDirectory().getTotalSpace()));
++        return FileUtils.roundStorageSize(Environment.getDataDirectory().getTotalSpace()
++                + Environment.getRootDirectory().getTotalSpace());
+     }
+ 
+     /** @hide */
+     public long getPrimaryStorageSize() {
+-        return FileUtils.roundStorageSize(Environment.getDataDirectory().getTotalSpace()
+-                + Environment.getRootDirectory().getTotalSpace());
++        return getPrimaryStorageSizeBytes();
+     }
+ 
+     /** @hide */
+diff --git a/frameworks/base/services/usage/java/com/android/server/usage/StorageStatsService.java b/frameworks/base/services/usage/java/com/android/server/usage/StorageStatsService.java
+--- a/frameworks/base/services/usage/java/com/android/server/usage/StorageStatsService.java
++++ b/frameworks/base/services/usage/java/com/android/server/usage/StorageStatsService.java
+@@ -265,6 +265,11 @@ public class StorageStatsService extends IStorageStatsManager.Stub {
+         // NOTE: No permissions required
+ 
+         if (volumeUuid == StorageManager.UUID_PRIVATE_INTERNAL) {
++            if (SystemProperties.getBoolean("ro.kikiaosp.exact_storage_size", false)) {
++                // Preserve the exact whole-disk bytes even above 512 GB;
++                // Settings subtracts /data to derive the system/reserve size.
++                return mStorage.getPrimaryStorageSize();
++            }
+             // As a safety measure, use the original implementation for the devices
+             // with storage size <= 512GB to prevent any potential regressions
+             final long roundedUserspaceBytes = mStorage.getPrimaryStorageSize();

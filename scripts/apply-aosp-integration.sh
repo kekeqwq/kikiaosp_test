@@ -51,6 +51,15 @@ else
   echo "virtio boot-partition UUID patch does not apply cleanly" >&2
   exit 1
 fi
+exact_storage_patch="$REPO_ROOT/patches/aosp-kikiaosp-exact-storage-size.patch"
+if git -C "$AOSP_ROOT" apply --check "$exact_storage_patch"; then
+  git -C "$AOSP_ROOT" apply "$exact_storage_patch"
+elif git -C "$AOSP_ROOT" apply --reverse --check "$exact_storage_patch"; then
+  echo "Exact KikiAOSP storage-capacity patch already applied"
+else
+  echo "Exact KikiAOSP storage-capacity patch does not apply cleanly" >&2
+  exit 1
+fi
 while IFS= read -r -d '' src; do
   rel=${src#"$REPO_ROOT/overlays/"}
   mkdir -p "$AOSP_ROOT/$(dirname "$rel")"

@@ -18,6 +18,13 @@ elif ! git -C "$aosp_root" apply --reverse --check "$uuid_patch"; then
     echo 'Tracked virtio UUID patch does not match AOSP init.' >&2
     exit 1
 fi
+storage_patch="$repo_root/patches/aosp-kikiaosp-exact-storage-size.patch"
+if git -C "$aosp_root" apply --check "$storage_patch"; then
+    git -C "$aosp_root" apply "$storage_patch"
+elif ! git -C "$aosp_root" apply --reverse --check "$storage_patch"; then
+    echo 'Tracked exact storage-capacity patch does not match AOSP framework.' >&2
+    exit 1
+fi
 cd "$aosp_root"
 source build/envsetup.sh
 lunch kikiaosp_test_arm64_phone-cp2a-userdebug
