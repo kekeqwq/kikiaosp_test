@@ -61,9 +61,9 @@ by this prototype, and no camera regression result is claimed.
 
 ## Remaining release work
 
-The current default fstab uses whole vda/vdb/vde devices. Implement and verify
-the tracked release GPT fstab/partition discovery and truly fresh userdata
-formatting before freezing format1. Generate the boot payload from the clean,
+The rollback/default multi-disk fstab uses whole vda/vdb/vde devices. The
+tracked GPT fstab/discovery, fresh formatting and32/200-GiB system prototypes
+are now verified as described below. Generate the final boot payload from the clean,
 source-locked release OUT_DIR, record boot/system/vendor matching identities,
 and run the public package producer/consumer checks. The prototype script alone
 does not prove privacy, license completeness or clean-output provenance.
@@ -111,8 +111,11 @@ This also exposed a separate user-facing failure: AOSP phone-tier rounding
 reported64GB for32GiB and derived ~31GB as Android/system usage. Underlying
 whole-disk/data capacities were correct. The tracked, product-gated exact
 storage framework patch now uses mount/vold's actual parent block-device
-size in both StorageManager and StorageStatsService. Its new candidate
-is building; Settings capacity acceptance is NOT yet claimed.
+size in both StorageManager and StorageStatsService. New32/200-GiB disks
+pass both APIs and actual Settings capacity screenshots. A second product-gated
+patch removes the invented one-GiB temporary-file minimum;32GiB now shows
+Android17 about1.3GB and real temporary files about518MB. Detailed results
+and remaining gates are in [GPT_STORAGE_PROTOTYPE](GPT_STORAGE_PROTOTYPE.md).
 
 These results do not prove clean release output or source-lock/license
 compliance. The public package contract is still a draft. The prototype
