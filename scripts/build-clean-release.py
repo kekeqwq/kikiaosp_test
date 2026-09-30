@@ -46,6 +46,28 @@ def clean(repository):
         raise ValueError(f"Tracked source/index changes in {repository}; refusing to freeze.")
 
 
+def build_environment(out):
+    env = os.environ.copy()
+    for key in ("OUT_DIR_COMMON_BASE", "OUT_DIR", "TARGET_PRODUCT", "TARGET_BUILD_VARIANT", "TARGET_RELEASE",
+                "SISO_CONFIG_DIR", "USE_RBE", "USE_REWRAPPER", "RBE_instance", "RBE_service"):
+        env.pop(key, None)
+    # Relative logical out is important: multiple Android 17 modules reject
+    # generated absolute paths outside TOP. physical out remains independent.
+    env.update(OUT_DIR=str(out), BUILD_NUMBER="KIKI_0.1.0_ALPHA", BUILD_USERNAME="KikiEmu",
+               BUILD_HOSTNAME="release-builder", SOONG_NINJA="ninja", USE_RBE="false", USE_REWRAPPER="false")
+    return env
+
+
+def logical_output(aosp, out):
+    alias = aosp / "out"
+    if os.path.lexists(alias):
+        if not alias.is_symlink() or alias.resolve(strict=True) != out:
+            raise ValueError("Fresh source out must be absent or link to this exact independent release output.")
+    else:
+        alias.symlink_to(out, target_is_directory=True)
+    return Path("out")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--preparation", required=True, type=Path)
@@ -84,12 +106,20 @@ def main():
     device_commit = run(["git", "rev-parse", "HEAD"], device, capture=True).decode().strip()
     kernel_commit = run(["git", "rev-parse", "HEAD"], kernel, capture=True).decode().strip()
     stamp = record / "build-audit.json"
+    runner_commit = device_commit
+    if args.resume:
+        # Resume builds the already-frozen sources, not the caller's latest
+        # branch. Pipeline-only repairs may run from a newer clean commit;
+        # both immutable source worktrees are still checked below.
+        audit = json.loads(stamp.read_text())
+        device_commit, kernel_commit = audit["deviceCommit"], audit["kernelCommit"]
+        if any(not re.fullmatch("[0-9a-f]{40}", commit) for commit in (device_commit, kernel_commit)):
+            raise ValueError("Invalid frozen source commits in resume record.")
     expected = {"recipe": "kikiaosp-release-v1", "deviceCommit": device_commit,
                 "kernelCommit": kernel_commit, "manifestSha256": source["manifestSha256"],
                 "aosp": str(aosp), "output": str(out), "product": "kikiaosp_test_arm64_phone_release",
                 "systemVersion": "0.1.0-alpha", "sharedInputs": "Git objects only; no development outputs/images"}
     if args.resume:
-        audit = json.loads(stamp.read_text())
         if any(audit.get(key) != value for key, value in expected.items()):
             raise ValueError("Resume must use the SAME frozen commits, paths and recipe.")
         if audit["phase"] == "applying-integration":
@@ -134,11 +164,11 @@ def main():
         audit["kernelImageSha256"] = digest(record / "kernel-result/boot/kernel")
         audit["flakeLockSha256"] = digest(kernel_snapshot / "flake.lock")
         phase("building-aosp")
-    env = os.environ.copy()
-    for key in ("OUT_DIR_COMMON_BASE", "OUT_DIR", "TARGET_PRODUCT", "TARGET_BUILD_VARIANT", "TARGET_RELEASE"):
-        env.pop(key, None)
-    env.update(OUT_DIR=str(out), BUILD_NUMBER="KIKI_0.1.0_ALPHA", BUILD_USERNAME="KikiEmu",
-               BUILD_HOSTNAME="release-builder")
+    env = build_environment(logical_output(aosp, out))
+    audit["pipelineCommit"] = runner_commit
+    audit["logicalOutput"] = "out"
+    audit["buildBackend"] = "ninja"
+    stamp.write_text(json.dumps(audit, indent=2) + "\n")
     if audit["phase"] == "building-aosp":
         build = f"set -eo pipefail; source build/envsetup.sh; lunch kikiaosp_test_arm64_phone_release-cp2a-userdebug; m -j{args.jobs} systemimage vendorimage ramdisk mkbootfs mkbootimg simg2img"
         run(["bash", "-c", build], aosp, env)

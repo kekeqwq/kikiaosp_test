@@ -14,6 +14,32 @@ spec.loader.exec_module(build)
 
 
 class Guards(unittest.TestCase):
+    def test_independent_local_backend_is_explicit(self):
+        with patch.dict("os.environ", {"OUT_DIR": "/old/development/out", "TARGET_PRODUCT": "wrong",
+                                       "SOONG_NINJA": "siso", "SISO_CONFIG_DIR": "/foreign", "USE_RBE": "true"}):
+            env = build.build_environment(Path("/fresh/release-output"))
+        self.assertEqual(env["OUT_DIR"], "/fresh/release-output")
+        self.assertEqual(env["SOONG_NINJA"], "ninja")
+        self.assertEqual(env["USE_RBE"], "false")
+        self.assertNotIn("TARGET_PRODUCT", env)
+        self.assertNotIn("SISO_CONFIG_DIR", env)
+
+    def test_logical_out_uses_only_exact_independent_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            aosp, out, other = root / "fresh-source", root / "fresh-output", root / "foreign-output"
+            for path in (aosp, out, other):
+                path.mkdir()
+            self.assertEqual(build.logical_output(aosp, out), Path("out"))
+            self.assertEqual((aosp / "out").resolve(), out)
+            self.assertEqual(build.logical_output(aosp, out), Path("out"))
+            with self.assertRaises(ValueError):
+                build.logical_output(aosp, other)
+            (aosp / "out").unlink()
+            (aosp / "out").mkdir()
+            with self.assertRaises(ValueError):
+                build.logical_output(aosp, out)
+
     def test_commits_exact(self):
         self.assertEqual(build.commits('<manifest><project name="platform/example" path="external/example" revision="' + 'a' * 40 + '"/></manifest>'), {"external/example": 'a' * 40})
 
