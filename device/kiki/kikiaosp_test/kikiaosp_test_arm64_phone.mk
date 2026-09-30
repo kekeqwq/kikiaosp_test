@@ -241,7 +241,7 @@ PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     vendor/etc/ueventd.rc \
     vendor/etc/init/hw/init.ranchu.rc
 PRODUCT_COPY_FILES += \
-    device/kiki/kikiaosp_test/fstab.ranchu:vendor/etc/fstab.ranchu \
+    device/kiki/kikiaosp_test/fstab.gpt.ranchu:vendor/etc/fstab.ranchu \
     device/kiki/kikiaosp_test/ueventd.kikiaosp.rc:vendor/etc/ueventd.rc \
     device/kiki/kikiaosp_test/init.ranchu.rc:vendor/etc/init/hw/init.ranchu.rc \
     device/kiki/kikiaosp_test/kiki-adb.rc:system/etc/init/kiki-adb.rc \
