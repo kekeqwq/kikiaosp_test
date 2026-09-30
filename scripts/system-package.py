@@ -33,7 +33,9 @@ def no_duplicates(pairs):
 
 
 def document(data):
-    return json.loads(data.decode("utf-8"), object_pairs_hook=no_duplicates)
+    def invalid_constant(value):
+        raise ValueError(f"Nonstandard JSON constant: {value}")
+    return json.loads(data.decode("utf-8"), object_pairs_hook=no_duplicates, parse_constant=invalid_constant)
 
 
 def schema(name):
@@ -114,6 +116,12 @@ def validate_lock(value):
     projects = root.findall("project")
     if root.tag != "manifest" or len(projects) != value["aosp"]["projectCount"]:
         raise ValueError("Pinned project count/root mismatch.")
+    remaining = [(root, 0)]
+    while remaining:
+        node, depth = remaining.pop()
+        if depth >= 32 or (node.tag == "project" and depth != 1):
+            raise ValueError("Excessively nested/noncanonical AOSP provenance.")
+        remaining.extend((child, depth + 1) for child in node)
     paths = set()
     for project in projects:
         path = project.get("path", project.get("name", ""))
@@ -141,9 +149,97 @@ def boot_header(data, length):
     return kernel, ramdisk, ramdisk_offset
 
 
+def raw_zip_names(path):
+    """Strict raw metadata checks matching the native consumer.
+
+    zipfile owns CRC/decompression; preflight forbids formats it would otherwise
+    normalize (NULs, executable prefixes, comments/trailers and aliases).
+    """
+    length = path.stat().st_size
+    with path.open("rb") as stream:
+        def read(at, count):
+            if at < 0 or at > length or count > length - at:
+                raise ValueError("ZIP metadata is out of bounds.")
+            stream.seek(at)
+            value = stream.read(count)
+            if len(value) != count:
+                raise ValueError("ZIP metadata is truncated.")
+            return value
+        def number(data, at, width):
+            return int.from_bytes(data[at:at + width], "little")
+        if length < 22 or read(0, 4) != b"PK\x03\x04":
+            raise ValueError("System package must be a ZIP, not SFX/executable.")
+        end = read(length - 22, 22)
+        if (end[:4] != b"PK\x05\x06" or number(end, 20, 2) or number(end, 4, 2) or
+                number(end, 6, 2) or number(end, 8, 2) != number(end, 10, 2)):
+            raise ValueError("Multi-disk/commented/trailing ZIP data is unsupported.")
+        entries, size, offset = number(end, 10, 2), number(end, 12, 4), number(end, 16, 4)
+        central_end = length - 22
+        if entries == 65535 or size == 4294967295 or offset == 4294967295:
+            locator = read(length - 42, 20)
+            if locator[:4] != b"PK\x06\x07" or number(locator, 4, 4) or number(locator, 16, 4) != 1:
+                raise ValueError("Invalid ZIP64 locator.")
+            record_at = number(locator, 8, 8)
+            record = read(record_at, 56)
+            if (record[:4] != b"PK\x06\x06" or number(record, 4, 8) != 44 or
+                    record_at + 56 != length - 42 or number(record, 16, 4) or number(record, 20, 4) or
+                    number(record, 24, 8) != number(record, 32, 8)):
+                raise ValueError("Invalid ZIP64 end record.")
+            entries, size, offset = number(record, 32, 8), number(record, 40, 8), number(record, 48, 8)
+            central_end = record_at
+        if not 1 <= entries <= 69 or size > 1048576 or offset > central_end or size != central_end - offset:
+            raise ValueError("ZIP directory count/size/offset is unsupported.")
+        names = set()
+        cursor = offset
+        for _ in range(entries):
+            header = read(cursor, 46)
+            if header[:4] != b"PK\x01\x02" or number(header, 8, 2) & 1 or number(header, 34, 2):
+                raise ValueError("Invalid/encrypted/multi-disk ZIP entry.")
+            name_bytes, extra, comment = number(header, 28, 2), number(header, 30, 2), number(header, 32, 2)
+            if not 1 <= name_bytes <= 128 or comment or cursor + 46 + name_bytes + extra > central_end:
+                raise ValueError("Noncanonical ZIP entry metadata.")
+            name = read(cursor + 46, name_bytes).decode("ascii")
+            if (not re.fullmatch(r"(?:manifest[.]json|payload/(?:boot|system|vendor)[.]img|provenance/source-lock[.]json|licenses/[a-z0-9][a-z0-9_-]*[.]txt)", name)
+                    or name in names):
+                raise ValueError("Duplicate or unsafe raw ZIP pathname.")
+            names.add(name)
+            local_at = number(header, 42, 4)
+            if local_at == 4294967295:
+                fields = read(cursor + 46 + name_bytes, extra)
+                at, found = 0, False
+                while at + 4 <= len(fields):
+                    tag, field_length = number(fields, at, 2), number(fields, at + 2, 2)
+                    at += 4
+                    if field_length > len(fields) - at:
+                        raise ValueError("Truncated ZIP64 extra field.")
+                    if tag == 1:
+                        skip = (8 if number(header, 24, 4) == 4294967295 else 0) + (8 if number(header, 20, 4) == 4294967295 else 0)
+                        if found or skip + 8 > field_length:
+                            raise ValueError("Missing/duplicate ZIP64 local offset.")
+                        local_at, found = number(fields, at + skip, 8), True
+                    at += field_length
+                if not found:
+                    raise ValueError("ZIP64 local offset was not declared.")
+            if local_at >= offset:
+                raise ValueError("ZIP local header overlaps its directory.")
+            local = read(local_at, 30)
+            local_name_bytes, local_extra = number(local, 26, 2), number(local, 28, 2)
+            method = number(header, 10, 2)
+            if (local[:4] != b"PK\x03\x04" or local_name_bytes != name_bytes or
+                    local_at + 30 + local_name_bytes + local_extra > offset or method not in (0, 8) or
+                    number(local, 8, 2) != method or number(local, 6, 2) != number(header, 8, 2) or
+                    read(local_at + 30, local_name_bytes) != name.encode("ascii")):
+                raise ValueError("ZIP local/central name, flags or compression differ.")
+            cursor += 46 + name_bytes + extra
+        if cursor != central_end:
+            raise ValueError("Unrecognized ZIP directory extension.")
+        return names
+
+
 def validate_package(path):
     if path.stat().st_size > 32 << 30:
         raise ValueError("ZIP exceeds format-1 safety limit.")
+    raw_names = raw_zip_names(path)
     with zipfile.ZipFile(path) as archive:
         infos = archive.infolist()
         names, folded = set(), set()
@@ -160,6 +256,8 @@ def validate_package(path):
                 raise ValueError("Duplicate, case-ambiguous or oversized archive entry.")
             names.add(name)
             folded.add(name.casefold())
+        if names != raw_names:
+            raise ValueError("Decoded ZIP names differ from raw metadata.")
         if "manifest.json" not in names or archive.getinfo("manifest.json").file_size > 1048576:
             raise ValueError("Missing/oversized manifest.")
         manifest = document(archive.read("manifest.json"))

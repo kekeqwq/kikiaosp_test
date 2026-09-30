@@ -1,6 +1,6 @@
 # KikiAOSP system package contract — version 1 proposal
 
-Status: implementation draft, 2026-09-30. No version-1 package has been built or accepted yet. Freeze this contract only after the first producer/consumer installation prototype passes. The existing development bundle is NOT this format.
+Status: implementation draft, 2026-10-01. Schemas, validators and synthetic reader fixtures exist; no real clean version-1 system package has been built or accepted yet. Freeze this contract only after the first producer/consumer installation prototype passes. The existing development bundle is NOT this format.
 
 This document belongs to `kikiaosp_test`, the producer of system installation materials. `KikiEmu` implements the reader/installer against the same versioned contract. Do not independently redefine it in the launcher repository.
 
@@ -35,6 +35,8 @@ Forbidden: GPT/MBR whole-disk images, `.qcow2`, `userdata.img`, initialized misc
 ## 3. Required manifest semantics
 
 The implementation must introduce a machine-readable schema and semantic validator before releasing any assets. Required records:
+
+Canonical draft schemas and shared metadata mutations now live in [contracts/format-1](contracts/format-1/README.md). Run `python scripts/system-package.py --self-test` and `python scripts/test-system-package.py` with python-jsonschema installed. The native KikiEmu reader vendors exact schema/fixture bytes with a producer commit/hash pin. ZIP/ZIP64 permits store/deflate only, no SFX/comments/trailers, duplicate/NUL/unsafe paths, encryption/special files or local/central name/flag/encoding disagreement. Metadata uses UTF-8 without BOM, strict integer tokens and unique keys; source XML disallows DTD/entities and requires uniquely pinned direct project entries. Small synthetic ZIPs test readers, not clean source provenance or bootability; no real packaging/build pipeline or public acceptance is claimed by these tests.
 
 | Record | Meaning |
 | --- | --- |

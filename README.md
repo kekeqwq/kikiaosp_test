@@ -10,6 +10,8 @@
 
 系统包与运行器独立模块化：本仓库的 ZIP 只交付系统必需文件、配套内核/initramfs 与来源/许可记录，不包含 QEMU、Windows 程序或用户磁盘。KikiEmu 的 create 另要求 `--qemu <bin目录>`；set 可更换兼容 QEMU 路径，下次启动生效，不改变已有系统/磁盘 ABI。合适的原生 ARM64 QEMU 构建/运行目录导出步骤由 [KikiEmu README](https://github.com/kekeqwq/KikiEmu) 维护。setup.exe/CLI 的用户视角验收交由用户，开发侧负责构建检查和系统本身验证，未收到验收结论前不公开发版。
 
+共用机器合同已保存到 [contracts/format-1](contracts/format-1/README.md)，Windows 消费端按设备仓库提交和文件哈希固定引用，不在运行时下载浮动规范。Linux 使用 `python scripts/system-package.py --self-test` 检查24个共用清单样例，`python scripts/test-system-package.py` 检查15个隔离 ZIP/来源样例；`--validate /path/to/system.zip` 核验已有符合合同的包。这些只证明读取/拒绝规则，测试 ZIP 内核和文件系统是假数据，不可启动、不可发给用户当系统包。真正干净发行构建/打包流水线和系统完整验收尚待实现。
+
 已经新增并实测 [源码生成 boot/initramfs 的开发原型](docs/BOOT_PAYLOAD.md)：当前产品的静态 first-stage init + tracked fstab + AOSP mkbootfs/mkbootimg，不使用历史 recovery ramdisk。新的单盘GPT32/200 GiB磁盘均可首次格式化完整F2FS、启动到SDL/VirGL/120Hz桌面，并跨正常关机/重启保留数据。容量统计已去掉手机营销档位取整及虚构临时文件下限，设置页显示真实用量，见[GPT存储验证记录](docs/GPT_STORAGE_PROTOTYPE.md)。干净发行输出、真实ZIP生产消费与正式/Dev隔离仍待实现/验收，不能将这些开发原型当成发行包。
 
 公开交付仅包含干净生成的系统安装材料（配套 kernel/initramfs 的 boot payload、EROFS system/vendor、清单及来源/许可）；不发布整盘、userdata、已初始化 misc/metadata 或旧支持 tarball。用户通过 KikiEmu 自行创建固定总容量、动态占用的磁盘，再安装系统。容量只在 create 时选择，创建后不可 set；内存/vCPU 等运行资源配置下次启动生效。
