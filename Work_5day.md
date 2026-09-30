@@ -763,3 +763,13 @@ serial and stderr logs remain in `aosp/windows-arm64-test/` on host 106.
 - 快门灰掉：CPU YUV_420_888 ImageReader usage0x20033申请被拒。`aosp-kikiaosp-virgl-cpu-camera-yuv.patch`注册CPU/camera NV12并使用已有R8 emulation，排除GPU/scanout请求和host GBM路径，不伪报原生GPU多平面能力。最后vendor-only构建9steps/13秒，最终SHA `115626c3ad9a31744389307e135e8a6a08922749ec1e02cf5f3b3d3cb2848350`。
 - 正式最终vendor配对经全镜像哈希验证后在Surface启动，前后摄各保存新JPEG，关闭app确认硬件释放，crash buffer为空。apply/audit均登记两个补丁；删除AOSP内临时像素诊断，修正retain-gallery2补丁混合行尾，integration audit通过183tracked paths+5overlays。GPU仅指VirGL显示/合成；CPU采集/转换/JPEG依然存在，录视频和零拷贝未验收。
 - /dev/sdb1干净AOSP已FULL_SYNC_EXIT=0并卸载，不再修改。用户新报Wallpaper&style没有颜色/图标：当前只有WallpaperPicker2，将在独立主题改动中核对ThemePicker及其资源/provider/权限，不混入相机checkpoint。
+
+### W5-CP2A-THEMEPICKER-MAINLINE-ACCEPTANCE-20260930
+
+- 用户确认当前完整 Wallpaper & style 可用，要求全部变更推入 main。ThemePicker 改动提交 `31fa720`，与 origin/main 合并节点 `bff664f`，保留相机 checkpoint `6643762`、已合入的导航栏/Taskbar 修复和历史独立重打包器；不同的未追踪重打包脚本先移至 output 留存，未删除诊断资产。
+- 根因是产品仅安装 WallpaperPicker2，没有完整 ThemePicker、OEM 颜色资源和当前 Launcher3 的图标 provider 资源键。产品改为 ThemePicker + KikiCustomizationResources，提供六组颜色；静态 overlay 的 themed_icon_metadata_key 指向 `com.android.launcher3.grid.control`。采用原版 ThemePicker required 特权权限文件，不改上游主题/桌面源码。
+- CP2A 增量构建退出 0、5分16秒，实际 ninja 138 steps。system SHA `67f9e0e189efe7e5d6e5e5575a170b269f8862960de38b63292ddea47289ead4`、1,109,270,528 字节；vendor SHA `72202a6af84fc79fc35cefb6d0f6e502fc266b2bbc6c867a49271f4dd234bb4a`、101,437,440 字节。Surface 实际运行 boot_completed=1、Android17、7.3.0-rc4-4k、VirGL GLES3.1，ThemePicker/颜色资源 APK 从 system/system_ext 加载，主题特权权限已授权。用户确认可用，运行 crash buffer 无新应用崩溃。
+- 合并后设备和 AOSP 集成审计通过：183 tracked patch paths +5 overlays。主线 Taskbar/导航栏修复已经存在于已验收实际 AOSP 和集成 patch，合并没有新增未经测试的实现，不需要盲目重编。
+- Windows 仓库更新默认统一启动器、镜像清单和收集器，保留8vCPU/4GiB、1003×1556、288dpi、字体1.5、客机120Hz、SDL/VirGL、无Grab/console；不改宿主显示。内核 main `8984112` 已包含 fence修复 `02753ae`，本次无内核代码改动。
+- system/vendor 和兼容 product/system_ext 冻结在185设备仓库 output，运行辅助 tar 保留并在清单中明确；均不进 Git。CP2A 实际 product/system_ext 在 system 内，旧独立辅助盘不是当前 ThemePicker 的加载来源。README 改为当前主线及完整准备/构建/交付步骤，不再误导启动旧软件镜像。
+- 相机采集/转换/JPEG并非全GPU零拷贝，操作延迟仍未解决；动画APK回调FPS不能等同屏幕呈现。照片、整桌截图、日志及临时诊断不上传公开仓库。/dev/sdb1 干净源码盘仍保持卸载。
