@@ -88,11 +88,13 @@ def seed_reference_boundaries(base, checkout, raw):
     return count
 
 
-def repair_missing_indexes(checkout, raw, env):
+def repair_missing_indexes(checkout, raw, env, complete_missing_files=False):
     """Repair ONLY absent indexes whose existing files exactly match the pin.
 
     read-tree without -u never writes worktree files. Use a temporary index to
     verify every tracked/untracked file before CREATE_NEW-linking it into place.
+    With separate opt-in, checkout-index may restore ONLY absent tracked files;
+    it never receives --force. Existing edits/untracked files refuse beforehand.
     Existing indexes, source edits, sparse checkouts and foreign gitdirs refuse.
     This is explicit recovery for interrupted NEW repo clients, not git reset.
     """
@@ -124,6 +126,30 @@ def repair_missing_indexes(checkout, raw, env):
                            cwd=worktree, env=isolated, check=True)
             dirty = subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=normal"],
                                             cwd=worktree, env=isolated)
+            if dirty.strip() and complete_missing_files:
+                # Reject modifications/type changes/untracked files BEFORE
+                # even a missing file is written. Parse NUL-separated Git
+                # names, not a newline-quoted human status listing.
+                entries = subprocess.check_output(["git", "status", "--porcelain", "-z", "--untracked-files=normal"],
+                                                  cwd=worktree, env=isolated).split(b"\0")
+                entries = [entry for entry in entries if entry]
+                if not entries or any(entry[:3] != b" D " for entry in entries):
+                    raise ValueError(f"Existing/untracked files in {path} differ from the pin; no files restored.")
+                for entry in entries:
+                    relative = os.fsdecode(entry[3:])
+                    if (relative.startswith("/") or any(part in ("", ".", "..") for part in relative.split("/"))
+                            or os.path.lexists(worktree / relative)):
+                        raise ValueError("Only genuinely absent safe tracked files may be restored.")
+                    for parent in (worktree / relative).parents:
+                        if parent == worktree:
+                            break
+                        if parent.is_symlink():
+                            raise ValueError("Missing-file recovery must not traverse a symlink.")
+                subprocess.run(["git", "checkout-index", "--stdin", "-z"], cwd=worktree, env=isolated,
+                               input=b"\0".join(entry[3:] for entry in entries) + b"\0", check=True)
+                print("MISSING_PINNED_FILES_RESTORED:", path, len(entries), flush=True)
+                dirty = subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=normal"],
+                                                cwd=worktree, env=isolated)
             if dirty.strip():
                 raise ValueError(f"Files in {path} differ from the pin; refusing missing-index recovery.")
             # link fails if another process created ANY index, including a
@@ -146,6 +172,8 @@ def main():
                         help="Explicitly migrate an earlier local-manifest preparation; preserve every pinned revision")
     parser.add_argument("--repair-missing-indexes", action="store_true",
                         help="Explicit recovery: rebuild only absent indexes after comparing existing files to each exact pin")
+    parser.add_argument("--complete-missing-files", action="store_true",
+                        help="With missing-index recovery only, restore absent tracked files without overwriting existing files")
     args = parser.parse_args()
     base = args.baseline.resolve(strict=True)
     checkout = args.checkout.resolve()
@@ -168,6 +196,8 @@ def main():
         raise ValueError("Manifest repair requires --resume.")
     if args.repair_missing_indexes and not args.resume:
         raise ValueError("Index recovery requires an explicit --resume.")
+    if args.complete_missing_files and not args.repair_missing_indexes:
+        raise ValueError("Missing-file recovery requires --repair-missing-indexes.")
     origin = run(["git", "remote", "get-url", "origin"], base / ".repo/manifests", env, True).decode().strip()
     if not args.resume:
         raw = run([launcher, "manifest", "-r"], base, env, True)
@@ -231,7 +261,7 @@ def main():
     if args.repair_missing_indexes:
         if metadata["status"] != "preparing-source-not-built":
             raise ValueError("Index recovery is restricted to unfinished source preparation.")
-        repair_missing_indexes(checkout, raw, env)
+        repair_missing_indexes(checkout, raw, env, args.complete_missing_files)
     dirty = run([launcher, "forall", "-c", "git status --porcelain --untracked-files=normal"], checkout, env, True)
     if dirty.strip():
         raise ValueError("Fresh upstream checkout has uncommitted files; refusing release preparation.")

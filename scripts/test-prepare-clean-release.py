@@ -97,6 +97,32 @@ class IndexRecoveryTests(unittest.TestCase):
             prepare.repair_missing_indexes(self.root, self.xml.replace(self.commit.encode(), b"a" * 40), self.env)
         self.assertFalse((self.gitdir / "index").exists())
 
+    def test_missing_file_requires_separate_opt_in(self):
+        (self.gitdir / "index").unlink()
+        (self.worktree / "source.txt").unlink()
+        with self.assertRaises(ValueError):
+            prepare.repair_missing_indexes(self.root, self.xml, self.env)
+        self.assertFalse((self.worktree / "source.txt").exists())
+        self.assertFalse((self.gitdir / "index").exists())
+        self.assertEqual(prepare.repair_missing_indexes(self.root, self.xml, self.env, True), 1)
+        self.assertEqual((self.worktree / "source.txt").read_text(), "original pinned source\n")
+        self.assertEqual(self.git("status", "--porcelain"), b"")
+
+    def test_real_edit_prevents_even_other_missing_file_restore(self):
+        (self.worktree / "second.txt").write_text("original second\n")
+        self.git("add", "second.txt")
+        self.git("-c", "user.name=Test", "-c", "user.email=test@localhost", "commit", "-m", "second")
+        new_commit = self.git("rev-parse", "HEAD").decode().strip()
+        raw = self.xml.replace(self.commit.encode(), new_commit.encode())
+        (self.gitdir / "index").unlink()
+        (self.worktree / "source.txt").unlink()
+        (self.worktree / "second.txt").write_text("preserve this actual edit\n")
+        with self.assertRaises(ValueError):
+            prepare.repair_missing_indexes(self.root, raw, self.env, True)
+        self.assertFalse((self.worktree / "source.txt").exists())
+        self.assertFalse((self.gitdir / "index").exists())
+        self.assertEqual((self.worktree / "second.txt").read_text(), "preserve this actual edit\n")
+
 
 if __name__ == "__main__":
     unittest.main()
