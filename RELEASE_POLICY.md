@@ -82,6 +82,43 @@ Presets preserve the same validated SDL/VirGL/120-Hz/native-resolution behavior.
 
 ## Version/tag/asset discipline
 
+### Independent pinned-source preparation
+
+`scripts/prepare-clean-release.py` prepares a NEW checkout from the baseline's
+exact `repo manifest -r` project commits. It does not copy a patched source
+worktree, `out/`, development images, initialized disks or the offline backup
+volume. It shares Git object caches through standard `repo --reference` only.
+When the frozen manifest is stored locally, relative fetch prefixes are resolved
+against the ORIGINAL HTTPS manifest origin; copying `fetch=".."` unchanged to a
+`file://` manifest would mistakenly fetch local filesystem repositories.
+
+The preparation record includes original/exported manifest hashes, project
+count, pinned repo-tool commit and paths. Reference shallow cutoffs may be
+copied only as Git-cache metadata into NEW initialized project gitdirs borrowing
+that recorded baseline; no project refs or source files are copied. Missing
+objects are fetched through the explicit proxy with bounded jobs, current refs
+and no tags. Final project commits and a clean upstream working tree must pass
+before `clean-pinned-upstream-ready-not-built` is recorded. That status proves
+source preparation only, NOT a clean built/published system package.
+
+Example on the build machine (choose NEW paths, run inside the active build
+tmux session; do not start a duplicate task):
+
+```sh
+python scripts/test-prepare-clean-release.py
+python -u scripts/prepare-clean-release.py \
+  --baseline /home/keke/aosp-master --checkout /home/keke/aosp-release-0.1 \
+  --record /home/keke/projects/kikiaosp_test/output/release-preparation \
+  --proxy http://192.168.2.2:6152 --jobs 4
+```
+
+An interrupted preparation uses the same recorded paths and `--resume`, never
+a new upstream HEAD. `--repair-relative-remotes` is an explicit migration of an
+unfinished older preparation only; it does not change any pinned project
+commit. Build the release identity in independent output only after preparation
+and integration audits pass. Do not package the preparation log or private host
+addresses into a consumer system ZIP.
+
 First version/tag: `0.1.0-alpha` / `v0.1.0-alpha`, GitHub prerelease, with system ZIP and setup.exe in the appropriate two repositories. Freeze candidate source before building; create immutable release tags only for the accepted candidate.
 
 Draft BOTH releases first. Verify the actual uploaded downloads' hashes and perform acceptance against those exact bytes; only then publish. Never replace a published artifact's contents under the same version. Use a new version for a correction, retaining the preceding compatible release for users.
