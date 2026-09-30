@@ -1,0 +1,6 @@
+name: "cp2a"
+aconfig_value_sets: "aconfig_value_set-device_kiki_kikiaosp_test-cp2a"
+default_containers: "product"
+default_containers: "system"
+default_containers: "system_ext"
+default_containers: "vendor"

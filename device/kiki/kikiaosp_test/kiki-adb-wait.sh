@@ -27,10 +27,10 @@ for n in 1 2 3 4 5; do
     /system/bin/cmd media_session volume --stream 3 --set 15 >/dev/kmsg 2>&1 && break
     sleep 2
 done
-# Batteryless QEMU reports UNKNOWN battery status, which Android treats as
-# externally powered. The stock stay-awake policy keeps this test display on
-# while the launcher or Settings is in the foreground.
+# Batteryless QEMU can lock the display during boot before stay-awake applies.
+# Cover reused userdata as well as fresh SettingsProvider defaults.
 /system/bin/settings put global stay_on_while_plugged_in 15 >/dev/kmsg 2>&1
+/system/bin/settings put system screen_off_timeout 2147483647 >/dev/kmsg 2>&1
 /system/bin/settings put global device_provisioned 1 >/dev/kmsg 2>&1
 /system/bin/settings --user 0 put secure user_setup_complete 1 >/dev/kmsg 2>&1
 /system/bin/cmd package set-home-activity --user 0 com.android.launcher3 >/dev/kmsg 2>&1

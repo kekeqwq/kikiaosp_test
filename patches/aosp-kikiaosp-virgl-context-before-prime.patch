@@ -1,0 +1,35 @@
+diff --git a/external/minigbm/virtgpu_virgl.c b/external/minigbm/virtgpu_virgl.c
+--- a/external/minigbm/virtgpu_virgl.c
++++ b/external/minigbm/virtgpu_virgl.c
+@@ -694,3 +694,31 @@ static int virgl_init(struct driver *drv)
+ 	virgl_init_params_and_caps(drv);
+ 
++	/* Initialize this FD before its first PRIME import. When CONTEXT_INIT
++	 * is advertised, the kernel does not create/attach a legacy context on
++	 * GEM open. A later CPU transfer can otherwise use a context to which
++	 * the imported resource was never attached. Do not alter gfxstream. */
++	if (params[param_3d].value && params[param_context_init].value &&
++	    !priv->caps_is_gfxstream) {
++		struct drm_virtgpu_context_set_param context_param = {
++		    .param = VIRTGPU_CONTEXT_PARAM_CAPSET_ID,
++		    .value = priv->caps_is_v2 ? VIRTIO_GPU_CAPSET_VIRGL2 : VIRTIO_GPU_CAPSET_VIRGL,
++		};
++		struct drm_virtgpu_context_init context_init = {
++		    .num_params = 1,
++		    .ctx_set_params = (uint64_t)(uintptr_t)&context_param,
++		};
++		ret = drmIoctl(drv->fd, DRM_IOCTL_VIRTGPU_CONTEXT_INIT, &context_init);
++		if (ret && errno != EBUSY) {
++			ret = -errno;
++			drv_loge("VirGL context init before PRIME import failed: %s\n",
++				 strerror(errno));
++			pthread_mutex_destroy(&priv->host_blob_format_lock);
++			free(priv);
++			drv->priv = NULL;
++			return ret;
++		}
++		drv_logi("VirGL context ready before PRIME import: capset=%llu existing=%d\n",
++			 (unsigned long long)context_param.value, ret != 0);
++	}
++
+ 	if (params[param_3d].value) {

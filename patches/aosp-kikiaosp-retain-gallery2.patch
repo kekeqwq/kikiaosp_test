@@ -1,0 +1,7 @@
+diff --git a/build/make/core/product_config.mk b/build/make/core/product_config.mk
+--- a/build/make/core/product_config.mk
++++ b/build/make/core/product_config.mk
+@@ -282 +282,2 @@
+-PRODUCT_PACKAGES := $(filter-out $(KIKI_NONCORE_PACKAGES),$(PRODUCT_PACKAGES))
++# Keep AOSP Gallery2 and Camera2 utilities; other non-core packages stay excluded.
++PRODUCT_PACKAGES := $(filter-out $(filter-out Gallery2 Camera2,$(KIKI_NONCORE_PACKAGES)),$(PRODUCT_PACKAGES))

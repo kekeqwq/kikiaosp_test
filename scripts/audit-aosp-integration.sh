@@ -4,13 +4,57 @@ AOSP_ROOT=${1:-}
 REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 if [[ -z "$AOSP_ROOT" || ! -d "$AOSP_ROOT/.repo" ]]; then echo "usage: $0 /path/to/aosp-master" >&2; exit 2; fi
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-awk '/^diff --git a\// {print $3}' "$REPO_ROOT/patches/aosp-working-tree.patch" |
-  sed 's#^a/##' | sort -u > "$tmp/expected"
+integration_patches=(
+  "$REPO_ROOT/patches/aosp-working-tree.patch"
+  "$REPO_ROOT/patches/aosp-kikiaosp-retain-gallery2.patch"
+  "$REPO_ROOT/device/kiki/kikiaosp_test/camera/aosp-kikiaosp-camera-sources.patch"
+  "$REPO_ROOT/patches/aosp-kikiaosp-settings-kernel-version.patch"
+  "$REPO_ROOT/patches/aosp-kikiaosp-virgl-context-before-prime.patch"
+  "$REPO_ROOT/patches/aosp-kikiaosp-virgl-cpu-camera-yuv.patch"
+)
+: > "$tmp/expected"
+for integration_patch in "${integration_patches[@]}"; do
+  [[ -f "$integration_patch" ]] || { echo "missing integration patch: $integration_patch" >&2; exit 1; }
+  awk '/^diff --git a\// {print $3}' "$integration_patch" >> "$tmp/expected"
+done
+sed 's#^a/##' "$tmp/expected" | sort -u > "$tmp/expected.sorted"
+mv "$tmp/expected.sorted" "$tmp/expected"
 ( cd "$AOSP_ROOT"; repo forall -c 'git diff --name-only | sed "s#^#$REPO_PATH/#"' ) | sed '/^$/d' | sort -u > "$tmp/actual"
 if ! diff -u "$tmp/expected" "$tmp/actual"; then echo "AOSP tracked changes do not exactly match kikiaosp_test/patches" >&2; exit 1; fi
 patch -d "$AOSP_ROOT" -p1 --dry-run --reverse --batch \
   < "$REPO_ROOT/patches/aosp-working-tree.patch" >/dev/null || {
   echo "AOSP source does not exactly match patches/aosp-working-tree.patch" >&2
+  exit 1
+}
+patch -d "$AOSP_ROOT" -p1 --dry-run --reverse --batch \
+  < "$REPO_ROOT/patches/aosp-kikiaosp-retain-gallery2.patch" >/dev/null || {
+  echo "AOSP source does not match patches/aosp-kikiaosp-retain-gallery2.patch" >&2
+  exit 1
+}
+git -C "$AOSP_ROOT" apply --reverse --check \
+  "$REPO_ROOT/device/kiki/kikiaosp_test/camera/aosp-kikiaosp-camera-sources.patch" || {
+  echo "AOSP source does not match the Kiki camera source filegroup patch" >&2
+  exit 1
+}
+git -C "$AOSP_ROOT" apply --reverse --check \
+  "$REPO_ROOT/patches/aosp-kikiaosp-settings-kernel-version.patch" || {
+  echo "AOSP source does not match the SettingsLib kernel-version patch" >&2
+  exit 1
+}
+git -C "$AOSP_ROOT" apply --reverse --check \
+  "$REPO_ROOT/patches/aosp-kikiaosp-virgl-context-before-prime.patch" || {
+  echo "AOSP source does not match the VirGL context-before-PRIME patch" >&2
+  exit 1
+}
+git -C "$AOSP_ROOT" apply --reverse --check \
+  "$REPO_ROOT/patches/aosp-kikiaosp-virgl-cpu-camera-yuv.patch" || {
+  echo "AOSP source does not match the VirGL CPU-camera-YUV patch" >&2
+  exit 1
+}
+camera_main="$AOSP_ROOT/device/kiki/kikiaosp_test/camera/kikiaosp_main.cpp"
+grep -Fq 'constexpr int32_t kWindowsFrameSensorOrientation = 0;' "$camera_main" && \
+  [[ $(grep -c 'kWindowsFrameSensorOrientation};' "$camera_main") -eq 2 ]] || {
+  echo "Both Surface cameras must report the orientation of upright Windows frames" >&2
   exit 1
 }
 system_server_src="$AOSP_ROOT/frameworks/base/services/java/com/android/server/SystemServer.java"
@@ -94,10 +138,21 @@ grep -Fq 'ro.kikiaosp.bootstrap_only=false' "$product_mk" && \
 grep -Fq 'ro.kikiaosp.minimal_services=false' "$product_mk" && \
 grep -Fq '    Launcher3QuickStep' "$product_mk" && \
 grep -Fq '    Settings' "$product_mk" && \
+grep -Fq '    DocumentsUI' "$product_mk" && \
+grep -Fq '    Camera2' "$product_mk" && \
+grep -Fq '    android.hardware.camera.provider.kikiaosp' "$product_mk" && \
+grep -Fq 'kikiaosp_test_arm64_phone-cp2a-userdebug' "$AOSP_ROOT/device/kiki/kikiaosp_test/AndroidProducts.mk" && \
 ! grep -Fq '    KikiWindowTest' "$product_mk" && \
 ! grep -Fq 'inherit-product, $(SRC_TARGET_DIR)/product/aosp_arm64.mk' "$product_mk" && \
 ! grep -Fq 'KIKI_NONCORE_PACKAGES' "$product_mk" || {
   echo "Kiki product must use the curated core/UI profile, not the broad GSI package-minus profile" >&2
+  exit 1
+}
+grep -Fq 'closeCameraLocked()' "$AOSP_ROOT/device/kiki/kikiaosp_test/camera/SurfaceCamera.cpp" && \
+grep -Fq 'reply == "CLOSED"' "$AOSP_ROOT/device/kiki/kikiaosp_test/camera/SurfaceCamera.cpp" && \
+grep -Fq 'formatKernelVersion_nixKernelWithDistroSuffix_shouldRemainAvailable' \
+  "$REPO_ROOT/patches/aosp-kikiaosp-settings-kernel-version.patch" || {
+  echo "Kiki camera release lifecycle or SettingsLib kernel-version regression is missing" >&2
   exit 1
 }
 linker_config_json="$AOSP_ROOT/system/core/rootdir/etc/linker.config.json"

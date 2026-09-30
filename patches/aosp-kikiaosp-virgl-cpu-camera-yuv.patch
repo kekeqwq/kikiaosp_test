@@ -1,0 +1,33 @@
+diff --git a/external/minigbm/virtgpu_virgl.c b/external/minigbm/virtgpu_virgl.c
+--- a/external/minigbm/virtgpu_virgl.c
++++ b/external/minigbm/virtgpu_virgl.c
+@@ -349,6 +349,17 @@ static bool virgl_supports_combination_natively(struct driver *drv, uint32_t drm_format,
+ 	if (priv->caps.max_version == 0)
+ 		return true;
+ 
++	/* Camera ImageReaders can request CPU-only YUV without BO_USE_TEXTURE.
++	 * With no host GBM, an unsupported multi-plane format must still use
++	 * the existing R8 byte-buffer emulation instead of a native YUV resource.
++	 * Do not change GPU/scanout requests or GBM-backed allocation. */
++	if (!priv->host_gbm_enabled &&
++	    !(use_flags & (BO_USE_GPU_HW | BO_USE_SCANOUT)) &&
++	    (drm_format == DRM_FORMAT_NV12 || drm_format == DRM_FORMAT_NV21 ||
++	     drm_format == DRM_FORMAT_YVU420 || drm_format == DRM_FORMAT_YVU420_ANDROID) &&
++	    !virgl_bitmask_supports_format(&priv->caps.v1.sampler, drm_format))
++		return false;
++
+ 	if ((use_flags & BO_USE_RENDERING) &&
+ 	    !virgl_bitmask_supports_format(&priv->caps.v1.render, drm_format))
+ 		return false;
+@@ -738,6 +749,11 @@ static int virgl_init(struct driver *drv)
+ 				      BO_USE_TEXTURE_MASK | BO_USE_CAMERA_READ |
+ 					  BO_USE_CAMERA_WRITE | BO_USE_HW_VIDEO_DECODER |
+ 					  BO_USE_HW_VIDEO_ENCODER | BO_USE_SCANOUT);
++		/* CPU-only capture does not need unsupported sampler/scanout flags.
++		 * Keep ImageReader YUV planes available through native allocation or
++		 * the existing R8 emulation path selected above. */
++		virgl_add_combination(drv, DRM_FORMAT_NV12, &LINEAR_METADATA,
++				      BO_USE_SW_MASK | BO_USE_CAMERA_READ | BO_USE_CAMERA_WRITE);
+ 	} else {
+ 		/* Virtio primary plane only allows this format. */
+ 		virgl_add_combination(drv, DRM_FORMAT_XRGB8888, &LINEAR_METADATA,

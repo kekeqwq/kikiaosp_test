@@ -1,0 +1,33 @@
+diff --git a/device/generic/goldfish/hals/camera/Android.bp b/device/generic/goldfish/hals/camera/Android.bp
+--- a/device/generic/goldfish/hals/camera/Android.bp
++++ b/device/generic/goldfish/hals/camera/Android.bp
+@@ -17,6 +17,29 @@
+ package {
+     default_applicable_licenses: ["Android-Apache-2.0"],
+ }
+ 
++filegroup {
++    name: "kikiaosp_camera_aidl_common_sources",
++    srcs: [
++        "AFStateMachine.cpp",
++        "AutoNativeHandle.cpp",
++        "CachedStreamBuffer.cpp",
++        "CameraDevice.cpp",
++        "CameraDeviceSession.cpp",
++        "CameraProvider.cpp",
++        "converters.cpp",
++        "exif.cpp",
++        "HwCamera.cpp",
++        "jpeg.cpp",
++        "metadata_utils.cpp",
++        "BaseQemuCamera.cpp",
++        "StreamBufferCache.cpp",
++        "service_entry.cpp",
++        "utils.cpp",
++        "yuv.cpp",
++    ],
++    visibility: ["//visibility:public"],
++}
++
+ cc_defaults {
+     name: "android.hardware.camera.provider.ranchu_defaults",

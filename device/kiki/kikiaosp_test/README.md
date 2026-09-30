@@ -70,6 +70,6 @@ scripts/sync-device-tree.sh ~/aosp-master
 
 The sync overlays this device-tree directory and intentionally preserves
 unknown destination files; use a clean AOSP checkout for a reproducible
-baseline. Then build `kikiaosp_test_arm64_phone-trunk_staging-userdebug` using
+baseline. Then build `kikiaosp_test_arm64_phone-cp2a-userdebug` using
 the repository's main README. Do not modify upstream source outside the
 tracked patch/overlay integration.

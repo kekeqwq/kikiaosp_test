@@ -4576,6 +4576,142 @@ index 063c6c504575..fb8f2320b38b 100644
  }
  
  AndroidRuntime::AndroidRuntime(char* argBlockStart, const size_t argBlockLength)
+diff --git a/frameworks/base/packages/SystemUI/src/com/android/systemui/navigationbar/NavigationBarControllerImpl.java b/frameworks/base/packages/SystemUI/src/com/android/systemui/navigationbar/NavigationBarControllerImpl.java
+index 3cb8771cfd45..e8c0199874be 100644
+--- a/frameworks/base/packages/SystemUI/src/com/android/systemui/navigationbar/NavigationBarControllerImpl.java
++++ b/frameworks/base/packages/SystemUI/src/com/android/systemui/navigationbar/NavigationBarControllerImpl.java
+@@ -26,14 +26,18 @@ import android.content.res.Configuration;
+ import android.hardware.devicestate.DeviceStateManager;
+ import android.hardware.display.DisplayManager;
+ import android.os.Bundle;
++import android.os.Handler;
++import android.os.Looper;
+ import android.os.RemoteException;
+ import android.os.Trace;
+ import android.util.Log;
+ import android.util.SparseArray;
+ import android.util.SparseBooleanArray;
++import android.util.SparseIntArray;
+ import android.view.Display;
+ import android.view.IWindowManager;
+ import android.view.View;
++import android.view.WindowManager;
+ import android.view.WindowManagerGlobal;
+ import android.window.DesktopExperienceFlags;
+ 
+@@ -84,6 +88,8 @@ public class NavigationBarControllerImpl implements
+         Dumpable, NavigationBarController {
+ 
+     private static final String TAG = NavigationBarControllerImpl.class.getSimpleName();
++    private static final long NAV_BAR_HANDOFF_RETRY_DELAY_MS = 250;
++    private static final int MAX_NAV_BAR_HANDOFF_RETRIES = 16;
+ 
+     private final Context mContext;
+     private final Executor mExecutor;
+@@ -93,6 +99,9 @@ public class NavigationBarControllerImpl implements
+     private final DisplayManager mDisplayManager;
+     private final TaskbarDelegate mTaskbarDelegate;
+     private final NavBarHelper mNavBarHelper;
++    private final Handler mMainHandler = new Handler(Looper.getMainLooper());
++    private final SparseArray<Runnable> mNavBarRetryCallbacks = new SparseArray<>();
++    private final SparseIntArray mNavBarRetryAttempts = new SparseIntArray();
+     private int mNavMode;
+     /**
+      * Indicates whether the active display is a large screen, e.g. tablets, foldable devices in
+@@ -410,9 +419,14 @@ public class NavigationBarControllerImpl implements
+         }
+ 
+         final int displayId = display.getDisplayId();
++        if (mNavigationBars.get(displayId) != null
++                || mNavBarRetryCallbacks.get(displayId) != null) {
++            return;
++        }
+         final boolean isOnDefaultDisplay = displayId == mDisplayTracker.getDefaultDisplayId();
+ 
+         if (!canCreateNavBarOrTaskBar(displayId)) {
++            mNavBarRetryAttempts.delete(displayId);
+             return;
+         }
+ 
+@@ -426,6 +440,7 @@ public class NavigationBarControllerImpl implements
+         // We may show TaskBar on the default display for large screen device. Don't need to create
+         // navigation bar for this case.
+         if (isOnDefaultDisplay && initializeTaskbarIfNecessary()) {
++            mNavBarRetryAttempts.delete(displayId);
+             return;
+         }
+ 
+@@ -436,7 +451,17 @@ public class NavigationBarControllerImpl implements
+         NavigationBarComponent component = mNavigationBarComponentFactory.create(
+                 context, savedState);
+         NavigationBar navBar = component.getNavigationBar();
+-        navBar.init();
++        try {
++            navBar.init();
++        } catch (WindowManager.BadTokenException e) {
++            navBar.destroyView();
++            if (!isDuplicateNavigationBarWindow(e)) {
++                throw e;
++            }
++            scheduleNavigationBarRetry(displayId, savedState, result, e);
++            return;
++        }
++        mNavBarRetryAttempts.delete(displayId);
+         mNavigationBars.put(displayId, navBar);
+ 
+         navBar.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+@@ -455,8 +480,51 @@ public class NavigationBarControllerImpl implements
+         });
+     }
+ 
++    private static boolean isDuplicateNavigationBarWindow(WindowManager.BadTokenException e) {
++        final String message = e.getMessage();
++        // WindowManager permits only one navigation-bar window per display. During a size-class
++        // transition, Launcher3's Taskbar can still own that window briefly after SystemUI has
++        // decided to replace it with the phone navigation bar.
++        return message != null && message.contains("another window of type "
++                + WindowManager.LayoutParams.TYPE_NAVIGATION_BAR + " already exists");
++    }
++
++    private void scheduleNavigationBarRetry(int displayId, Bundle savedState,
++            RegisterStatusBarResult result, WindowManager.BadTokenException cause) {
++        int attempts = mNavBarRetryAttempts.get(displayId, 0) + 1;
++        if (attempts > MAX_NAV_BAR_HANDOFF_RETRIES) {
++            mNavBarRetryAttempts.delete(displayId);
++            Log.e(TAG, "Navigation bar handoff did not complete after "
++                    + MAX_NAV_BAR_HANDOFF_RETRIES + " retries on display " + displayId, cause);
++            return;
++        }
++        mNavBarRetryAttempts.put(displayId, attempts);
++        if (attempts == 1) {
++            Log.w(TAG, "Deferring navigation bar creation while the previous taskbar/nav bar "
++                    + "window is still attached on display " + displayId, cause);
++        }
++
++        final Runnable retry = () -> {
++            mNavBarRetryCallbacks.remove(displayId);
++            final Display currentDisplay = mDisplayManager.getDisplay(displayId);
++            if (currentDisplay == null || mNavigationBars.get(displayId) != null) {
++                mNavBarRetryAttempts.delete(displayId);
++                return;
++            }
++            createNavigationBar(currentDisplay, savedState, result);
++        };
++        mNavBarRetryCallbacks.put(displayId, retry);
++        mMainHandler.postDelayed(retry, NAV_BAR_HANDOFF_RETRY_DELAY_MS);
++    }
++
+     @Override
+     public void removeNavigationBar(int displayId) {
++        final Runnable retry = mNavBarRetryCallbacks.get(displayId);
++        if (retry != null) {
++            mMainHandler.removeCallbacks(retry);
++            mNavBarRetryCallbacks.remove(displayId);
++        }
++        mNavBarRetryAttempts.delete(displayId);
+         NavigationBar navBar = mNavigationBars.get(displayId);
+         if (navBar != null) {
+             navBar.destroyView();
 diff --git a/frameworks/base/services/core/java/com/android/server/MountServiceIdler.java b/frameworks/base/services/core/java/com/android/server/MountServiceIdler.java
 index 0f4c94bc8d4f..4caed71a7fa3 100644
 --- a/frameworks/base/services/core/java/com/android/server/MountServiceIdler.java

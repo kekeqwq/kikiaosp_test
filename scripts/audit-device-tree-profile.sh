@@ -5,14 +5,19 @@ repo_root=${1:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}
 device_dir="$repo_root/device/kiki/kikiaosp_test"
 product="$device_dir/kikiaosp_test_arm64_phone.mk"
 board="$device_dir/BoardConfig.mk"
+fstab="$device_dir/fstab.ranchu"
 native_rc="$device_dir/kiki-minimal-native.rc"
 ranchu_rc="$device_dir/init.ranchu.rc"
 app_bp="$device_dir/Android.bp"
 app_manifest="$device_dir/apps/KikiWindowTest/AndroidManifest.xml"
 app_source="$device_dir/apps/KikiWindowTest/src/com/kikiaosp/windowtest/MainActivity.java"
 home_source="$device_dir/apps/KikiWindowTest/src/com/kikiaosp/windowtest/HomeActivity.java"
+camera_bp="$device_dir/camera/Android.bp"
+camera_source="$device_dir/camera/SurfaceCamera.cpp"
+camera_policy="$device_dir/sepolicy/vendor/file_contexts"
 adb_wait="$device_dir/kiki-adb-wait.sh"
 settings_defaults="$device_dir/overlay/frameworks/base/packages/SettingsProvider/res/values/defaults.xml"
+wallpaper_permissions="$device_dir/permissions/privapp-permissions-com.android.wallpaper.xml"
 
 fail() { echo "device-tree profile audit: $*" >&2; exit 1; }
 require() { grep -Fq -- "$2" "$1" || fail "missing '$2' in $1"; }
@@ -31,9 +36,10 @@ require "$product" 'ZYGOTE_FORCE_64 := true'
 ! grep -Fq '$(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_arm64.mk)' "$product" || \
     fail 'the broad AOSP ARM64 GSI product must not be inherited'
 ! grep -Fq 'KIKI_NONCORE_PACKAGES' "$product" || fail 'remove the broad package-minus policy'
-if grep -Eq '^[[:space:]]*PRODUCT_PACKAGES[[:space:]]+-=' "$product"; then
-    fail 'remove broad package-minus assignments'
-fi
+removal_count=$(grep -Ec '^[[:space:]]*PRODUCT_PACKAGES[[:space:]]+-=' "$product" || true)
+[[ "$removal_count" -eq 2 ]] || fail 'only the two conflicting Ranchu camera packages may be removed'
+require "$product" 'PRODUCT_PACKAGES -= android.hardware.camera.provider.ranchu'
+require "$product" 'PRODUCT_PACKAGES -= android.hardware.camera.provider.ranchu_minigbm'
 
 for property in \
     'ro.kikiaosp.bootstrap_only=false' \
@@ -50,12 +56,31 @@ for property in \
     require "$product" "$property"
 done
 
-for package in Launcher3QuickStep Settings Gallery2 WallpaperPicker2 SystemUI LatinIME librs_jni com.android.hardware.power android.hardware.health-service.example com.android.hardware.audio; do
+for package in Launcher3QuickStep Settings DocumentsUI Camera2 android.hardware.camera.provider.kikiaosp Gallery2 WallpaperPicker2 SystemUI LatinIME librs_jni com.android.hardware.power android.hardware.health-service.example com.android.hardware.audio; do
     require "$product" "    $package"
 done
 require "$product" 'persist.sys.timezone=Asia/Shanghai'
 require "$product" 'sys.use_memfd=true'
 require "$product" 'TARGET_SCREEN_DENSITY := 288'
+require "$device_dir/AndroidProducts.mk" 'kikiaosp_test_arm64_phone-cp2a-userdebug'
+require "$repo_root/device/kiki/kikiaosp_test/release_config/release_configs/cp2a.textproto" 'name: "cp2a"'
+require "$repo_root/device/kiki/kikiaosp_test/release_config/aconfig/cp2a/com.android.wm.shell/enable_taskbar_on_phones_flag_values.textproto" 'enable_taskbar_on_phones'
+require "$repo_root/README.md" 'lunch kikiaosp_test_arm64_phone-cp2a-userdebug'
+require "$device_dir/README.md" 'kikiaosp_test_arm64_phone-cp2a-userdebug'
+require "$product" 'device/kiki/kikiaosp_test/permissions/privapp-permissions-com.android.wallpaper.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/privapp-permissions-com.android.wallpaper.xml'
+require "$product" '$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/privapp-permissions-com.android.wallpaper.xml'
+require "$wallpaper_permissions" '<privapp-permissions package="com.android.wallpaper">'
+for permission in \
+    android.permission.SET_WALLPAPER_DIM_AMOUNT \
+    android.permission.READ_WALLPAPER_INTERNAL \
+    android.permission.UPDATE_THEME_SETTINGS \
+    android.permission.BIND_WALLPAPER \
+    android.permission.SET_WALLPAPER_COMPONENT; do
+    require "$wallpaper_permissions" "<permission name=\"$permission\" />"
+done
+require "$repo_root/patches/aosp-kikiaosp-retain-gallery2.patch" 'filter-out Gallery2'
+require "$repo_root/patches/aosp-kikiaosp-settings-kernel-version.patch" 'formatKernelVersion_nixKernelWithDistroSuffix_shouldRemainAvailable'
+require "$repo_root/scripts/apply-aosp-integration.sh" 'aosp-kikiaosp-settings-kernel-version.patch'
 ! grep -Fq '    KikiWindowTest' "$product" || \
     fail 'KikiWindowTest is a regression fixture, not a product package'
 require "$product" 'device/kiki/kikiaosp_test/audio/audio_policy_configuration.xml:vendor/etc/audio_policy_configuration.xml'
@@ -93,8 +118,13 @@ require "$device_dir/kiki-user-defaults.sh" 'key_repeat_delay 1000'
 require "$board" 'TARGET_2ND_ARCH :='
 require "$board" 'TARGET_SUPPORTS_32_BIT_APPS := false'
 require "$board" 'TARGET_SUPPORTS_64_BIT_APPS := true'
-require "$board" 'BOARD_PRODUCTIMAGE_FILE_SYSTEM_TYPE := erofs'
-require "$board" 'BOARD_SYSTEM_EXTIMAGE_FILE_SYSTEM_TYPE := erofs'
+require "$board" 'TARGET_COPY_OUT_PRODUCT := system/product'
+require "$board" 'TARGET_COPY_OUT_SYSTEM_EXT := system/system_ext'
+require "$board" 'device/kiki/kikiaosp_test/sepolicy/vendor'
+require "$product" 'PRODUCT_BUILD_PRODUCT_IMAGE := false'
+require "$product" 'PRODUCT_BUILD_SYSTEM_EXT_IMAGE := false'
+! grep -Eq '^[[:space:]]*/dev/block/[^[:space:]]+[[:space:]]+/(product|system_ext)[[:space:]]' "$fstab" || \
+    fail 'product and system_ext content are folded into the system image; do not mount separate images'
 require "$product" 'PRODUCT_SOONG_NAMESPACES += device/generic/goldfish'
 require "$product" 'com.android.hardware.graphics.composer.ranchu'
 ! grep -Fq 'android.hardware.graphics.composer3-service.ranchu' "$product" || \
@@ -105,6 +135,22 @@ require "$product" 'vulkan.pastel'
 require "$product" 'device/kiki/kikiaosp_test/ueventd.kikiaosp.rc:vendor/etc/ueventd.rc'
 require "$device_dir/ueventd.kikiaosp.rc" '/dev/dri/card0 0660 system graphics'
 require "$device_dir/ueventd.kikiaosp.rc" '/dev/dri/renderD128 0666 system graphics'
+require "$device_dir/ueventd.kikiaosp.rc" '/dev/vport* 0666 system system'
+require "$camera_bp" 'imports: ["device/generic/goldfish"]'
+require "$camera_bp" ':kikiaosp_camera_aidl_common_sources'
+require "$device_dir/camera/aosp-kikiaosp-camera-sources.patch" 'kikiaosp_camera_aidl_common_sources'
+require "$device_dir/camera/android.hardware.camera.provider.kikiaosp.xml" 'internal/1'
+require "$repo_root/scripts/apply-aosp-integration.sh" 'aosp-kikiaosp-camera-sources.patch'
+require "$product" 'PRODUCT_SOONG_NAMESPACES += device/kiki/kikiaosp_test/camera'
+require "$camera_source" 'closeCameraLocked()'
+require "$camera_source" 'CLOSE\n'
+require "$camera_source" 'reply == "CLOSED"'
+require "$camera_source" 'if (owner == mOwner)'
+require "$camera_source" 'Released real Surface'
+require "$camera_source" 'mParams.isBackFacing'
+require "$camera_policy" 'camera\.provider\.kikiaosp'
+require "$product" 'frameworks/native/data/etc/android.hardware.camera.xml:vendor/etc/permissions/android.hardware.camera.xml'
+require "$product" 'frameworks/native/data/etc/android.hardware.camera.front.xml:vendor/etc/permissions/android.hardware.camera.front.xml'
 
 require "$product" 'ro.vendor.hwcomposer.display_finder_mode=drm'
 for property_bridge in \

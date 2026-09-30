@@ -746,3 +746,20 @@ serial and stderr logs remain in `aosp/windows-arm64-test/` on host 106.
 - 源码解释只覆盖 SDL 结果：QEMU `include/ui/console.h` 默认 GUI refresh interval 为 30 ms；`ui/sdl2.c` 在没有 SDL 输入事件后恢复该默认，而本次持续 Game load 没有鼠标/键盘输入，实测约 34 FPS 与该节奏相符。GTK 则从 GDK monitor refresh 获取宿主率并通过 VirtIO GPU UIInfo 更新客体显示信息。该 SDL 结果说明窗口后端调度能影响客体呈现，不代表要采用 SDL，也不能解释 GTK 尚余的约 5 FPS 与触控延迟。
 - 综合本节配对 trace，RenderEngine `OpsTask::onExecute` 的 CPU 侧 elapsed p95 <0.4 ms（不是 GPU 硬件计时）；因此 trace 不支持“CPU 合成任务本身太重”是主因。blocking 路径 BufferQueue release p50/p95 8.87/20.21 ms、HWC atomic commit 7.48/22.49 ms。异步路径将 HWC 调用压到 0.16/0.52 ms，却把 BufferQueue release 拉到 25.18/39.51 ms，实际吞吐没有可证明提升。因此保留 blocking 默认，不以单个 faster API call 当作端到端优化。
 - 下一轮在 GTK 稳定配置上关联同一段的 `console_refresh`/host callback、Android SurfaceFlinger frame timeline、CRTC out-fence/vblank 和 VirGL fence completion，判断 55 FPS 及操作延迟来自 GTK frame-clock 排队、guest output-fence 回收还是 VirGL 同步。当前两个 QEMU 测试进程均已 HMP quit、4447/5555 监听已释放；没有 SystemUI 源码变更。
+
+### W5-RESIZE-SYSTEMUI-TASKBAR-HANDOFF-20260929
+- 根因确认：窗口从 864px（248dpi，约 557dp）跨到 1024px（约 661dp）时，Launcher3 的 Taskbar 仍持有每 display 唯一的 `TYPE_NAVIGATION_BAR=2019` 窗口，而 SystemUI 因手机/大屏配置切换也尝试创建同类型导航栏，触发 `BadTokenException: another window of type 2019 already exists`，随后造成状态栏触摸 dispatch 超时。不是 Ethernet、电池 HAL 或 GPU 渲染问题。
+- 设备树将 release aconfig `com.android.wm.shell.enable_taskbar_on_phones` 从 `DISABLED` 改为 `ENABLED`，使 Android 17 的 SystemUI/Launcher3 在窄屏与宽屏配置下对 Taskbar 导航窗口所有权保持一致。集成补丁中保留了仅针对重复 type-2019 窗口的防御性延迟重试；本次测试期间没有触发重试、BadToken 或 fatal exception。
+- 185 上增量构建 `m -j8 systemimage` 成功；aconfig 构建缓存确认该 flag 为 `ENABLED`。镜像 `systemui-phone-taskbar-enabled-20260929.img`，SHA-256 `123D26BE460A1D61FF8EB6635A0E43F10D5D9A5D8FD33BC2C62252362F78D892`，大小 1,051,099,136 bytes；未重编内核。镜像以独立文件保存，未覆盖稳定镜像。
+- Surface 本地 QEMU `-snapshot` 实测：从 864×1728/248dpi 切到 1024×1734（661dp）再返回 864×1728；之后重复一次跨阈值切换。每次 SystemUI PID 均保持 883，WMS 无 ANR，Launcher3 Taskbar 与 StatusBar 持续存在，logcat 无重复 type-2019、SystemUI ANR 或 fatal。窄屏和宽屏都通过状态栏下拉展开 `NotificationShade`，返回后成功收起。`dumpsys connectivity` 确认 `eth0` 的 Ethernet 网络为 CONNECTED/VALIDATED；全桌面截图可见状态栏时间、以太网状态符号和电池图标。
+- 全屏证据保存在 `C:\Users\keke\Downloads\temp\qemu-desktop-taskbar-phone-enabled-wide-1024x1734-20260929.png`、`...return-864x1730-20260929.png`、`...return-864-baseline-final-20260929.png` 和 `...shade-after-resize-864x1728-20260929.png`（均为 2880×1920 桌面截图）。当前测试 QEMU 仍在 864×1728 基线窗口中运行，便于用户继续肉眼确认；只在临时 `-snapshot` 状态下运行。UI/渲染性能 50–100 FPS 波动是独立未解决项，本次不据此声称性能问题已修复。
+
+### W5-CP2A-SURFACE-VIRGL-CAMERA-PHOTO-20260930
+
+- CP2A主机包已构建，Surface本地以稳定SDL QEMU SHA `5b92d13e421124d55e0420d3879cabdc491eeb3cf370332ec4bc84a57e4ff49a`回归，8vCPU/4GiB、1003×1556、288dpi、font scale1.5、全局120Hz、无Grab，不改Windows显示配置。前后摄Windows实际出图，用户确认可以拍摄，Pictures三张JPEG均640×480且在本机解码成功。系统页/文件管理器的本次CP2A设备修改也随此基线留存。
+- 前摄WinRT default profile实际报MF_E_UNEXPECTED；Windows bridge使用no-effects color passthrough profile绕过当前捕获故障，后摄保留MF SourceReader。OPEN释放旧source，CLOSE先释放实际reader/source再回复CLOSED，前后切换通过；不采集麦克风、不改宿主全局相机设置。
+- VirGL黑预览：HAL的RGBA数据正确，host transfer却返回EINVAL。minigbm在PRIME import前初始化VirGL context，让导入资源及时attach。设备仓库正式补丁 `aosp-kikiaosp-virgl-context-before-prime.patch`，不需要QEMU transfer日志诊断改动，也无需新内核。
+- 方向修复：Windows输出已正向，kikiaosp_main.cpp前后摄SENSOR_ORIENTATION均0，旧270度导致旁转；实际Windows桌面截图已确认直立，照片及截图只留本机，不上传Git。
+- 快门灰掉：CPU YUV_420_888 ImageReader usage0x20033申请被拒。`aosp-kikiaosp-virgl-cpu-camera-yuv.patch`注册CPU/camera NV12并使用已有R8 emulation，排除GPU/scanout请求和host GBM路径，不伪报原生GPU多平面能力。最后vendor-only构建9steps/13秒，最终SHA `115626c3ad9a31744389307e135e8a6a08922749ec1e02cf5f3b3d3cb2848350`。
+- 正式最终vendor配对经全镜像哈希验证后在Surface启动，前后摄各保存新JPEG，关闭app确认硬件释放，crash buffer为空。apply/audit均登记两个补丁；删除AOSP内临时像素诊断，修正retain-gallery2补丁混合行尾，integration audit通过183tracked paths+5overlays。GPU仅指VirGL显示/合成；CPU采集/转换/JPEG依然存在，录视频和零拷贝未验收。
+- /dev/sdb1干净AOSP已FULL_SYNC_EXIT=0并卸载，不再修改。用户新报Wallpaper&style没有颜色/图标：当前只有WallpaperPicker2，将在独立主题改动中核对ThemePicker及其资源/provider/权限，不混入相机checkpoint。

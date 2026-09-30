@@ -1,0 +1,51 @@
+soong_namespace {
+    imports: ["device/generic/goldfish"],
+}
+
+cc_binary {
+    name: "android.hardware.camera.provider.kikiaosp",
+    vendor: true,
+    relative_install_path: "hw",
+    init_rc: ["android.hardware.camera.provider.kikiaosp.rc"],
+    vintf_fragments: ["android.hardware.camera.provider.kikiaosp.xml"],
+    srcs: [
+        ":kikiaosp_camera_aidl_common_sources",
+        "SurfaceCamera.cpp",
+        "kikiaosp_main.cpp",
+    ],
+    include_dirs: ["device/generic/goldfish/hals/camera"],
+    shared_libs: [
+        "libbase",
+        "libbinder",
+        "libbinder_ndk",
+        "libcamera_metadata",
+        "libcutils",
+        "libEGL",
+        "libexif",
+        "libfmq",
+        "libGLESv2",
+        "libgralloctypes",
+        "libjpeg",
+        "liblog",
+        "libprocessgroup",
+        "libsync",
+        "libui",
+        "libutils",
+    ],
+    static_libs: [
+        "android.hardware.common-V2-ndk",
+        "android.hardware.common.fmq-V1-ndk",
+        "android.hardware.camera.common-V1-ndk",
+        "android.hardware.camera.device-V3-ndk",
+        "android.hardware.camera.provider-V3-ndk",
+        "libaidlcommonsupport",
+        "libyuv_static",
+    ],
+    header_libs: [
+        "libdebug.ranchu",
+        "libgralloc_cb.ranchu",
+    ],
+    cflags: [
+        "-DLOG_TAG=\"camera.provider.kikiaosp\"",
+    ],
+}

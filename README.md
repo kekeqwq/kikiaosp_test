@@ -54,7 +54,7 @@ scripts/audit-device-tree-profile.sh
 scripts/audit-aosp-integration.sh ~/aosp-master
 cd ~/aosp-master
 source build/envsetup.sh
-lunch kikiaosp_test_arm64_phone-trunk_staging-userdebug
+lunch kikiaosp_test_arm64_phone-cp2a-userdebug
 tmux new -s kikiaosp-build
 m -j8 systemimage vendorimage
 ```

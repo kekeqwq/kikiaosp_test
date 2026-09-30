@@ -1,0 +1,6 @@
+service vendor.camera-provider-kikiaosp /vendor/bin/hw/android.hardware.camera.provider.kikiaosp
+    class hal
+    user system
+    group system camera
+    capabilities SYS_NICE
+    task_profiles CameraServiceCapacity CameraServicePerformance

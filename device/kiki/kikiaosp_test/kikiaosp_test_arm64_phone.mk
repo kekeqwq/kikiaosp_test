@@ -87,6 +87,10 @@ PRODUCT_SYSTEM_PROPERTIES += \
 PRODUCT_PACKAGES += \
     Launcher3QuickStep \
     Settings \
+    DocumentsUI \
+    Camera2 \
+    cameraserver \
+    android.hardware.camera.provider.kikiaosp \
     Gallery2 \
     WallpaperPicker2 \
     SystemUI \
@@ -96,6 +100,34 @@ PRODUCT_PACKAGES += \
     preinstalled-packages-platform-handheld-product.xml \
     preinstalled-packages-platform-handheld-system.xml \
     preinstalled-packages-handheld-system-ext.xml
+
+# Legacy Camera API needs a CamcorderProfile and an output size that fits the
+# software encoder capabilities used by this minimal QEMU product.
+PRODUCT_COPY_FILES += \
+    device/kiki/kikiaosp_test/camera/media_profiles_V1_0.xml:$(TARGET_COPY_OUT_VENDOR)/etc/media_profiles_V1_0.xml
+
+# The stock Ranchu provider publishes the same internal/1 AIDL instance and
+# synthetic cameras. Use only the host-backed Kiki provider for real sensors.
+PRODUCT_PACKAGES -= android.hardware.camera.provider.ranchu
+PRODUCT_PACKAGES -= android.hardware.camera.provider.ranchu_minigbm
+
+PRODUCT_SOONG_NAMESPACES += device/kiki/kikiaosp_test/camera
+
+# Register both real Surface sensors through the internal AIDL camera HAL.
+# Frames are transported as NV12 over a dedicated named virtio-serial port.
+PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
+    vendor/etc/permissions/android.hardware.camera.xml \
+    vendor/etc/permissions/android.hardware.camera.front.xml
+PRODUCT_COPY_FILES += \
+    frameworks/native/data/etc/android.hardware.camera.xml:vendor/etc/permissions/android.hardware.camera.xml \
+    frameworks/native/data/etc/android.hardware.camera.front.xml:vendor/etc/permissions/android.hardware.camera.front.xml
+
+# WallpaperPicker2 is installed in system_ext, so its privileged permission
+# allowlist must be installed in the same partition rather than system.
+PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
+    $(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/privapp-permissions-com.android.wallpaper.xml
+PRODUCT_COPY_FILES += \
+    device/kiki/kikiaosp_test/permissions/privapp-permissions-com.android.wallpaper.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/privapp-permissions-com.android.wallpaper.xml
 
 # LocationManagerService requires a direct-boot-aware fused provider before
 # phase 600 completes. Use AOSP's stock privileged provider rather than a
@@ -173,6 +205,10 @@ PRODUCT_COPY_FILES += \
 # Dynamic image sizing and RRO enforcement are required by the upstream core
 # product layers and the fixed-orientation device overlay.
 PRODUCT_USE_DYNAMIC_PARTITION_SIZE := true
+# This target mounts raw system/vendor images, not a super partition. Keep
+# product and system_ext content inside system, matching AOSP's GSI layout.
+PRODUCT_BUILD_PRODUCT_IMAGE := false
+PRODUCT_BUILD_SYSTEM_EXT_IMAGE := false
 # Keep this device overlay static: the navigation-bar and AppWidgetService
 # config booleans are not overlayable resources, so enforced RRO silently
 # drops them from the generated framework-res overlay.
@@ -298,6 +334,9 @@ PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
 # the ARM64-only kernel and the empty secondary-architecture BoardConfig.
 TARGET_SUPPORTS_32_BIT_APPS := false
 TARGET_SUPPORTS_64_BIT_APPS := true
+# The ART APEX contains dex2oat64 only on this 64-bit-only product. Make
+# runtime dexopt select it instead of attempting the absent dex2oat32 binary.
+PRODUCT_VENDOR_PROPERTIES += dalvik.vm.dex2oat64.enabled=true
 
 # Upstream QEMU exposes virtio-gpu/DRM, not the Goldfish pipe used by the
 # emulator's default display finder. Select Ranchu HWC3's native DRM finder.
