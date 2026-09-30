@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Names and prefixes follow ThemePicker's ResourceConstants contract. -->
+    <string-array name="color_bundles">
+        <item>kiki_blue</item>
+        <item>kiki_lavender</item>
+        <item>kiki_rose</item>
+        <item>kiki_green</item>
+        <item>kiki_orange</item>
+        <item>kiki_monochrome</item>
+    </string-array>
+    <string name="bundle_name_kiki_blue">Blue</string>
+    <string name="bundle_name_kiki_lavender">Lavender</string>
+    <string name="bundle_name_kiki_rose">Rose</string>
+    <string name="bundle_name_kiki_green">Green</string>
+    <string name="bundle_name_kiki_orange">Orange</string>
+    <string name="bundle_name_kiki_monochrome">Monochrome</string>
+    <color name="color_secondary_kiki_blue">#4285F4</color>
+    <color name="color_secondary_kiki_lavender">#8E68CE</color>
+    <color name="color_secondary_kiki_rose">#D85C9B</color>
+    <color name="color_secondary_kiki_green">#408A60</color>
+    <color name="color_secondary_kiki_orange">#D77A32</color>
+    <color name="color_secondary_kiki_monochrome">#777777</color>
+    <string name="color_style_kiki_blue" translatable="false">TONAL_SPOT</string>
+    <string name="color_style_kiki_lavender" translatable="false">TONAL_SPOT</string>
+    <string name="color_style_kiki_rose" translatable="false">TONAL_SPOT</string>
+    <string name="color_style_kiki_green" translatable="false">TONAL_SPOT</string>
+    <string name="color_style_kiki_orange" translatable="false">TONAL_SPOT</string>
+    <string name="color_style_kiki_monochrome" translatable="false">MONOCHROMATIC</string>
+</resources>

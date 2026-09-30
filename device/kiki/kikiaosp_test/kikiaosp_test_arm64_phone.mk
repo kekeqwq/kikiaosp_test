@@ -92,7 +92,8 @@ PRODUCT_PACKAGES += \
     cameraserver \
     android.hardware.camera.provider.kikiaosp \
     Gallery2 \
-    WallpaperPicker2 \
+    ThemePicker \
+    KikiCustomizationResources \
     SystemUI \
     LatinIME \
     FusedLocation \
@@ -128,6 +129,12 @@ PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     $(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/privapp-permissions-com.android.wallpaper.xml
 PRODUCT_COPY_FILES += \
     device/kiki/kikiaosp_test/permissions/privapp-permissions-com.android.wallpaper.xml:$(TARGET_COPY_OUT_SYSTEM_EXT)/etc/permissions/privapp-permissions-com.android.wallpaper.xml
+
+# ThemePicker overrides WallpaperPicker2 and includes its wallpaper UI, the
+# full color/icon UI and the upstream privileged-permission XML. Its preset
+# palette comes from our resource-only OEM package; Launcher3 customization
+# uses the stock grid-control provider through the device resource overlay.
+PRODUCT_SOONG_NAMESPACES += device/kiki/kikiaosp_test/theme-resources
 
 # LocationManagerService requires a direct-boot-aware fused provider before
 # phase 600 completes. Use AOSP's stock privileged provider rather than a

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Current AOSP Launcher3 exposes the same icon API on grid_control.
+         Resolve its existing HOME metadata; no launcher code/manifest hack. -->
+    <string name="themed_icon_metadata_key" translatable="false">com.android.launcher3.grid.control</string>
+    <!-- Preview installed AOSP apps instead of uninstalled GMS packages. -->
+    <string-array name="icon_shape_preview_packages" translatable="false">
+        <item>com.android.launcher3</item>
+        <item>com.android.settings</item>
+        <item>com.android.camera2</item>
+        <item>com.android.documentsui</item>
+        <item>com.android.gallery3d</item>
+    </string-array>
+</resources>

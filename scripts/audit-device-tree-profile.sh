@@ -56,10 +56,13 @@ for property in \
     require "$product" "$property"
 done
 
-for package in Launcher3QuickStep Settings DocumentsUI Camera2 android.hardware.camera.provider.kikiaosp Gallery2 WallpaperPicker2 SystemUI LatinIME librs_jni com.android.hardware.power android.hardware.health-service.example com.android.hardware.audio; do
+for package in Launcher3QuickStep Settings DocumentsUI Camera2 android.hardware.camera.provider.kikiaosp Gallery2 ThemePicker KikiCustomizationResources SystemUI LatinIME librs_jni com.android.hardware.power android.hardware.health-service.example com.android.hardware.audio; do
     require "$product" "    $package"
 done
 require "$product" 'persist.sys.timezone=Asia/Shanghai'
+require "$device_dir/theme-resources/AndroidManifest.xml" 'package="com.android.customization.themes"'
+require "$device_dir/theme-resources/res/values/palettes.xml" 'name="color_bundles"'
+require "$device_dir/overlay/packages/apps/ThemePicker/res/values/kikiaosp_theme.xml" 'com.android.launcher3.grid.control'
 require "$product" 'sys.use_memfd=true'
 require "$product" 'TARGET_SCREEN_DENSITY := 288'
 require "$device_dir/AndroidProducts.mk" 'kikiaosp_test_arm64_phone-cp2a-userdebug'
