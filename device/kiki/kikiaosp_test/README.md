@@ -73,3 +73,21 @@ unknown destination files; use a clean AOSP checkout for a reproducible
 baseline. Then build `kikiaosp_test_arm64_phone-cp2a-userdebug` using
 the repository's main README. Do not modify upstream source outside the
 tracked patch/overlay integration.
+
+## GPU acceleration and interaction status — 2026-09-29
+
+The product's Mesa VirGL/native-composition path is integrated and has been
+visually exercised on the Surface-hosted QEMU target. Android reported
+`Mesa/X.org, virgl, OpenGL ES 3.1 Mesa 20.3.4`. The animated 60-FPS-target
+scene (1,024 instances) produced 70.36–110.89 Android render-callback FPS
+(median 80.53) over 29 one-second windows after warm-up in a 30-second sample
+at 1003×1556. This is app rendering cadence, not Windows DWM or panel-present
+FPS.
+
+This confirms that the accelerated render path is real; it does not mean the
+desktop is fully responsive. Launcher, Settings, and notification-shade
+interaction still show substantial latency. The outstanding issue is
+end-to-end buffer release/render/present latency, not missing VirGL
+initialization. The specific frame-rate validation used snapshot mode with
+empty product and system_ext images; the newly separated Gallery2/
+WallpaperPicker2 product partitions still need their own boot validation.

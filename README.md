@@ -8,7 +8,7 @@
 - 已构建并在 Windows ARM 主机启动：Linux 7.3-rc4 4 KiB 内核、QEMU `virt`、WHPX、`virtio-gpu-pci`、Ranchu HWC3/minigbm。`sys.boot_completed=1`，默认桌面为 Launcher3QuickStep，Settings、三键导航、多任务和通知栏可见且可交互；ADB 经 `127.0.0.1:5555` 可用。
 - 产品只保留 Launcher3、Settings 和必要的 SystemUI/输入法及基础服务。`KikiWindowTest` 源码保留作可选回归测试，但不预装、不自动启动。旧黑屏、绿点、原生测试层和动画 APK 的研究记录在 `Work_5day.md` 与 Git 历史中，不是当前产品配置。
 - 当前主线 `system.img` 的 SHA-256：`13c41b3d33b718075713d1472590a57b385f25610a2523bbe79d92a086df3636`。当前 `vendor.img` 的 SHA-256：`67616fae719997d6a779e8d1c8a99c0de2ee8b7a72aa05c97c480bba56322eb2`。二者已在 Windows ARM 上与 dma-buf 内核一起启动。此前动态分辨率配对的 system/vendor 分别是 `002e67758ff9cec0cc7c31161ba3cf12be3fad7a8fdfd0e6e4c559dcc830c85e` 和 `674652a3e965c36b20fd50eff2e3bd7c7a2ae1553cc8a76be3d1ed0925efb396`。
-- 主线（原 `feature/native-resolution-20260926`）已验证真实像素动态分辨率：默认手机窗口 864×1728、Surface 最大化 2784×1876、任意横向窗口 2374×1530，并能恢复到 864×1728。HWC 保留同一 Android 显示对象并原位更新参数，避免模式切换时销毁 layer、重启 SurfaceFlinger 或产生假的断开事件。Windows 全桌截图确认 Android 四边、状态栏和三键导航完整显示，不是旧画布拉伸，也不是只显示左上角。高刷和宿主 GPU 硬件渲染仍未验证。真实扬声器已经验证：PCM、设置点按音和铃声试听都可以从 QEMU DirectSound 播出。点按音与铃声试听依赖 AIDL Codec2 和内核的 dma-buf system heap。
+- 主线（原 `feature/native-resolution-20260926`）已验证真实像素动态分辨率：默认手机窗口 864×1728、Surface 最大化 2784×1876、任意横向窗口 2374×1530，并能恢复到 864×1728。HWC 保留同一 Android 显示对象并原位更新参数，避免模式切换时销毁 layer、重启 SurfaceFlinger 或产生假的断开事件。Windows 全桌截图确认 Android 四边、状态栏和三键导航完整显示，不是旧画布拉伸，也不是只显示左上角。现主线还包含可选 Mesa VirGL 原生 GPU 路径，Android 已报告 VirGL GLES 3.1；120 Hz 客体刷新配置和预热后的 60-FPS-target 场景测试已验证。实际桌面交互仍有明显延迟，不能以 APK 帧率代替 UI 跟手度。真实扬声器已经验证：PCM、设置点按音和铃声试听都可以从 QEMU DirectSound 播出。点按音与铃声试听依赖 AIDL Codec2 和内核的 dma-buf system heap。
 
 ## 目录与边界
 
@@ -17,7 +17,7 @@ device/kiki/kikiaosp_test/         本设备及产品定义
 patches/aosp-working-tree.patch   此快照下全部 AOSP tracked 源码改动；唯一应用入口
 overlays/                         AOSP 上游树中新增的少量文件
 manifests/                        已验证的 AOSP 精确项目修订
-scripts/                          同步、应用、审计和历史回归工具
+scripts/                          同步、应用、审计和回归工具；含独立窗口测试镜像重打包器
 Work_5day.md                      开发过程与实测日志
 ```
 
@@ -61,6 +61,8 @@ m -j8 systemimage vendorimage
 
 构建时按实际内存调整 `-j`；`out/` 应保留用于增量构建。`Ctrl-b d` 脱离 tmux，`tmux a -t kikiaosp-build` 查看；完成后关闭该会话。设备树更新后执行 `scripts/sync-device-tree.sh ~/aosp-master`，然后再次运行两项审计，避免 AOSP 工作树与此仓库版本不一致。上游 AOSP 更新后旧补丁可能不再适用，需要在独立升级分支解决冲突并重测。
 
+`scripts/repack-apk-window-test.sh` 是可选的独立回归镜像工具，用于把源码级 `KikiWindowTest` fixture 注入单独的测试镜像；它不属于常规产品构建，不会把 APK 预装进产品分区。脚本只在 AOSP `out/` 下建立临时工作目录，要求四个输出镜像均不存在后才写入。
+
 如需从当前已测试的 AOSP 工作树收敛新源码改动：
 
 ```bash
@@ -84,11 +86,13 @@ scripts/audit-aosp-integration.sh ~/aosp-master
 
 本仓库只交付 Android 镜像与必要的构建信息，不再存放 QEMU 补丁或 Windows 启动脚本。主仓库 [KikiEmu README](https://github.com/kekeqwq/KikiEmu) 中的清单及收集脚本会经 SSH 取回 Android 产物、内核和辅助包，验证 SHA-256 后形成可启动目录。测试结束关闭 QEMU；桌面截图只留本机，不上传此仓库。
 
-### 实验分支：Mesa VirGL 原生合成
+### 主线：Mesa VirGL 原生合成与性能状态
 
-`feature/gpu-virgl-20260927` 不替代上表的软件稳定基线。该分支在 Kiki 产品中加入 AOSP 自带的 SDV ARM64 Mesa VirGL 预编译库，并将 `patches/aosp-working-tree.patch` 中的旧 CPU 合成兜底限制在非 Mesa 模式。启动参数 `androidboot.hardwareegl=mesa` 才选择原生 GPU 缓冲路径；默认 `angle` 仍走已验证的软件路径。复现时先切到此分支，再按照上文的 `apply-aosp-integration.sh`、审计和 `m -j8 systemimage vendorimage` 流程构建，不要在已打过补丁的 AOSP 工作树上重复应用。
+原 `feature/gpu-virgl-20260927` 已合并主线。它在 Kiki 产品中加入 AOSP 自带的 SDV ARM64 Mesa VirGL 预编译库，并将 `patches/aosp-working-tree.patch` 中的旧 CPU 合成兜底限制在非 Mesa 模式。启动参数 `androidboot.hardwareegl=mesa` 选择原生 GPU 缓冲路径；主仓库的 VirGL 启动 profile 已在 Surface 上实测。软件 ANGLE profile 仍保留作为兼容/对照路径。构建仍按上文的 `apply-aosp-integration.sh`、审计和 `m -j8 systemimage vendorimage` 流程进行，不要在已打过补丁的 AOSP 工作树上重复应用。
 
-本分支已构建的候选镜像（尚未完成画面与性能验收）为：`system.img` 1,051,099,136 字节，SHA-256 `ba20dd6a8b09dcd482c1564c9718b84ac6d330c19a1d82ee78cf9aabf8701202`；`vendor.img` 99,700,736 字节，SHA-256 `f60fee46addc3f6bdaa3ebe1f2aa55ce0eeafd1678c6f314d6279ff7d11ac4e7`。第一次 VirGL vendor 测试已能启动 Android 并报告 `GLES: Mesa/X.org, virgl`，但旧 system 的 CPU 合成路径输出全黑；本节新的 system 镜像正针对这一点。配套的 Windows WGL QEMU 补丁、镜像收集 profile 和实测证据在 KikiEmu 主仓库的同名功能分支。
+预热后 30 秒的动画基准包含 29 个一秒窗口，Android 渲染回调为 **70.36–110.89 FPS**、中位数 **80.53 FPS**；运行条件为 1003×1556、60-FPS-target 场景（1,024 个实例）、8 vCPU、4 GiB、客体 120 Hz。此为 APK 回调帧率，不是 Windows DWM 或面板实际呈现帧率。Launcher、Settings 和通知栏真实交互仍有明显端到端延迟，尚未解决。
+
+此前候选镜像 `system.img`（SHA-256 `ba20dd6a8b09dcd482c1564c9718b84ac6d330c19a1d82ee78cf9aabf8701202`）与 `vendor.img`（SHA-256 `f60fee46addc3f6bdaa3ebe1f2aa55ce0eeafd1678c6f314d6279ff7d11ac4e7`）是早期实验产物，不能称为本次性能测试所用的完整分区组合。当前测试还使用空 product/system_ext 分区；新拆出的 Gallery2/WallpaperPicker2 分区仍需单独启动验证。对应 QEMU profile、测试命令与证据见 KikiEmu 主仓库。
 
 SDV 的三份 Mesa 预编译库来自较旧版本，ELF LOAD 对齐为 4 KiB；本实验只配合现有 4 KiB 内核。产品级 `PRODUCT_CHECK_PREBUILT_MAX_PAGE_SIZE := false` 仅为让这批预编译库进入候选镜像，不代表其可用于 16 KiB 内核；后续若测试 16 KiB，需先重新编译 Mesa 库并恢复检查。
 
