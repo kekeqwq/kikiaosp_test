@@ -25,6 +25,13 @@ elif ! git -C "$aosp_root" apply --reverse --check "$storage_patch" >/dev/null 2
     echo 'Tracked exact storage-capacity patch does not match AOSP framework.' >&2
     exit 1
 fi
+category_patch="$repo_root/patches/aosp-kikiaosp-storage-category-floor.patch"
+if git -C "$aosp_root" apply --check "$category_patch" >/dev/null 2>&1; then
+    git -C "$aosp_root" apply "$category_patch"
+elif ! git -C "$aosp_root" apply --reverse --check "$category_patch" >/dev/null 2>&1; then
+    echo 'Tracked storage-category patch does not match AOSP Settings.' >&2
+    exit 1
+fi
 cd "$aosp_root"
 source build/envsetup.sh
 lunch kikiaosp_test_arm64_phone-cp2a-userdebug

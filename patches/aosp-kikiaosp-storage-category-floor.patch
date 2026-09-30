@@ -1,0 +1,66 @@
+diff --git a/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageItemPreferenceController.java b/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageItemPreferenceController.java
+--- a/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageItemPreferenceController.java
++++ b/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageItemPreferenceController.java
+@@ -32,6 +32,7 @@
+ import android.net.Uri;
+ import android.os.Build;
+ import android.os.Bundle;
++import android.os.SystemProperties;
+ import android.os.UserHandle;
+ import android.os.UserManager;
+ import android.os.storage.VolumeInfo;
+@@ -515,11 +516,20 @@ public class StorageItemPreferenceController extends AbstractPreferenceController
+         }
+         // System size is equal for each user and should be added only once
+         attributedSize += data.systemSize;
+-        storageCache.temporaryFilesSize = Math.max(DataUnit.GIBIBYTES.toBytes(1),
+-                mUsedBytes - attributedSize);
++        storageCache.temporaryFilesSize = calculateTemporaryFilesSize(mUsedBytes, attributedSize,
++                SystemProperties.getBoolean("ro.kikiaosp.exact_storage_size", false));
+         return storageCache;
+     }
+ 
++    @VisibleForTesting
++    static long calculateTemporaryFilesSize(long usedBytes, long attributedBytes, boolean exact) {
++        // The KikiEmu disk and categories must reconcile to actual bytes;
++        // do not invent an additional 1 GiB of temporary files. Other products
++        // retain the upstream minimum and the shared asynchronous-stat guard.
++        final long minimum = exact ? 0 : DataUnit.GIBIBYTES.toBytes(1);
++        return Math.max(minimum, usedBytes - attributedBytes);
++    }
++
+     public void setUsedSize(long usedSizeBytes) {
+         mUsedBytes = usedSizeBytes;
+     }
+diff --git a/packages/apps/Settings/tests/robotests/src/com/android/settings/deviceinfo/storage/StorageItemPreferenceControllerTest.java b/packages/apps/Settings/tests/robotests/src/com/android/settings/deviceinfo/storage/StorageItemPreferenceControllerTest.java
+--- a/packages/apps/Settings/tests/robotests/src/com/android/settings/deviceinfo/storage/StorageItemPreferenceControllerTest.java
++++ b/packages/apps/Settings/tests/robotests/src/com/android/settings/deviceinfo/storage/StorageItemPreferenceControllerTest.java
+@@ -408,6 +408,28 @@ public class StorageItemPreferenceControllerTest {
+                 .isEqualTo("60 MB");
+     }
+ 
++    @Test
++    public void temporaryFiles_exactCapacityReportsRealRemainder() {
++        assertThat(StorageItemPreferenceController.calculateTemporaryFilesSize(
++                MEGABYTE_IN_BYTES * 800, MEGABYTE_IN_BYTES * 300, true))
++                .isEqualTo(MEGABYTE_IN_BYTES * 500);
++    }
++
++    @Test
++    public void temporaryFiles_exactCapacityClampsTransientOvercountToZero() {
++        assertThat(StorageItemPreferenceController.calculateTemporaryFilesSize(
++                MEGABYTE_IN_BYTES * 300, MEGABYTE_IN_BYTES * 800, true)).isEqualTo(0);
++    }
++
++    @Test
++    public void temporaryFiles_otherProductsKeepUpstreamMinimum() {
++        assertThat(StorageItemPreferenceController.calculateTemporaryFilesSize(
++                MEGABYTE_IN_BYTES * 800, MEGABYTE_IN_BYTES * 300, false))
++                .isEqualTo(1L << 30);
++        assertThat(StorageItemPreferenceController.calculateTemporaryFilesSize(
++                4L << 30, 2L << 30, false)).isEqualTo(2L << 30);
++    }
++
+     @Test
+     public void settingUserIdAppliesNewIcons() {
+         mController.displayPreference(mPreferenceScreen);

@@ -60,6 +60,15 @@ else
   echo "Exact KikiAOSP storage-capacity patch does not apply cleanly" >&2
   exit 1
 fi
+category_patch="$REPO_ROOT/patches/aosp-kikiaosp-storage-category-floor.patch"
+if git -C "$AOSP_ROOT" apply --check "$category_patch"; then
+  git -C "$AOSP_ROOT" apply "$category_patch"
+elif git -C "$AOSP_ROOT" apply --reverse --check "$category_patch"; then
+  echo "KikiAOSP storage-category patch already applied"
+else
+  echo "KikiAOSP storage-category patch does not apply cleanly" >&2
+  exit 1
+fi
 while IFS= read -r -d '' src; do
   rel=${src#"$REPO_ROOT/overlays/"}
   mkdir -p "$AOSP_ROOT/$(dirname "$rel")"

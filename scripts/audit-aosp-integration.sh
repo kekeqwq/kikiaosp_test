@@ -13,6 +13,7 @@ integration_patches=(
   "$REPO_ROOT/patches/aosp-kikiaosp-virgl-cpu-camera-yuv.patch"
   "$REPO_ROOT/patches/aosp-kikiaosp-init-virtio-boot-uuid.patch"
   "$REPO_ROOT/patches/aosp-kikiaosp-exact-storage-size.patch"
+  "$REPO_ROOT/patches/aosp-kikiaosp-storage-category-floor.patch"
 )
 : > "$tmp/expected"
 for integration_patch in "${integration_patches[@]}"; do
@@ -59,6 +60,11 @@ git -C "$AOSP_ROOT" apply --reverse --check \
   exit 1
 }
 camera_main="$AOSP_ROOT/device/kiki/kikiaosp_test/camera/kikiaosp_main.cpp"
+git -C "$AOSP_ROOT" apply --reverse --check \
+  "$REPO_ROOT/patches/aosp-kikiaosp-storage-category-floor.patch" || {
+  echo "AOSP source does not match the exact storage-category patch" >&2
+  exit 1
+}
 git -C "$AOSP_ROOT" apply --reverse --check \
   "$REPO_ROOT/patches/aosp-kikiaosp-exact-storage-size.patch" || {
   echo "AOSP source does not match the exact KikiAOSP storage-capacity patch" >&2
