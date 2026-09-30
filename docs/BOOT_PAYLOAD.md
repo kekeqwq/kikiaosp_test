@@ -67,3 +67,33 @@ formatting before freezing format1. Generate the boot payload from the clean,
 source-locked release OUT_DIR, record boot/system/vendor matching identities,
 and run the public package producer/consumer checks. The prototype script alone
 does not prove privacy, license completeness or clean-output provenance.
+
+## GPT prototype checkpoint — 2026-09-30
+
+The release implementation branch copies tracked `fstab.gpt.ranchu` into
+vendor and the newly generated first-stage ramdisk. The proposed installer
+creates a standalone GPT disk locally, with boot/system/vendor/misc/userdata
+labels and an instance-specific boot partition UUID. No userdata/service disk
+is a package payload. The old `fstab.ranchu` remains the multi-disk rollback
+reference; mainline is not changed by these prototype commits.
+
+The first native Windows installation prototype had a 32-GiB virtual capacity,
+about 1.16-GiB host image length before data formatting, and successful
+GPT/payload readback/QCOW2 checks. Kernel GPT parsing found vda1-vda5, but the
+first Android boot failed: UUID boot detection produced an empty device name
+and consequently no `/dev/block/by-name/system`. Source inspection identified
+`GetBlockDeviceInfo`'s UUID branch as supporting MMC/NVME/SCSI only.
+
+`patches/aosp-kikiaosp-init-virtio-boot-uuid.patch` adds exact virtio transport
+classification to that UUID branch. It does not fall back to disk number or
+classify every disk on a shared PCI/platform controller as the same device.
+Both static first-stage init and second-stage init/ueventd need the patch.
+The application script and integration audit include it, and
+`scripts/build-gpt-prototype.sh` explicitly builds both stages plus
+system/vendor/host boot tools before producing new boot materials.
+
+This checkpoint is not proof of corrected boot, data capacity/persistence,
+clean release output or source-lock/license compliance. Those gates remain
+mandatory. The public package contract is still a draft. The prototype
+launcher uses development endpoints; release/dev manager isolation is not
+implemented merely by adding GPT or a boot UUID.
