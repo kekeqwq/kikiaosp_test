@@ -11,6 +11,7 @@ integration_patches=(
   "$REPO_ROOT/patches/aosp-kikiaosp-settings-kernel-version.patch"
   "$REPO_ROOT/patches/aosp-kikiaosp-virgl-context-before-prime.patch"
   "$REPO_ROOT/patches/aosp-kikiaosp-virgl-cpu-camera-yuv.patch"
+  "$REPO_ROOT/patches/aosp-kikiaosp-init-virtio-boot-uuid.patch"
 )
 : > "$tmp/expected"
 for integration_patch in "${integration_patches[@]}"; do
@@ -49,6 +50,11 @@ git -C "$AOSP_ROOT" apply --reverse --check \
 git -C "$AOSP_ROOT" apply --reverse --check \
   "$REPO_ROOT/patches/aosp-kikiaosp-virgl-cpu-camera-yuv.patch" || {
   echo "AOSP source does not match the VirGL CPU-camera-YUV patch" >&2
+  exit 1
+}
+git -C "$AOSP_ROOT" apply --reverse --check \
+  "$REPO_ROOT/patches/aosp-kikiaosp-init-virtio-boot-uuid.patch" || {
+  echo "AOSP source does not match the virtio boot-partition UUID patch" >&2
   exit 1
 }
 camera_main="$AOSP_ROOT/device/kiki/kikiaosp_test/camera/kikiaosp_main.cpp"

@@ -42,6 +42,15 @@ else
   echo "VirGL CPU-camera-YUV patch does not apply cleanly" >&2
   exit 1
 fi
+virtio_boot_patch="$REPO_ROOT/patches/aosp-kikiaosp-init-virtio-boot-uuid.patch"
+if git -C "$AOSP_ROOT" apply --check "$virtio_boot_patch"; then
+  git -C "$AOSP_ROOT" apply "$virtio_boot_patch"
+elif git -C "$AOSP_ROOT" apply --reverse --check "$virtio_boot_patch"; then
+  echo "virtio boot-partition UUID patch already applied"
+else
+  echo "virtio boot-partition UUID patch does not apply cleanly" >&2
+  exit 1
+fi
 while IFS= read -r -d '' src; do
   rel=${src#"$REPO_ROOT/overlays/"}
   mkdir -p "$AOSP_ROOT/$(dirname "$rel")"

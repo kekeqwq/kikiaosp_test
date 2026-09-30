@@ -1,0 +1,35 @@
+diff --git a/system/core/init/devices.cpp b/system/core/init/devices.cpp
+--- a/system/core/init/devices.cpp
++++ b/system/core/init/devices.cpp
+@@ -235,6 +235,22 @@ void SysfsPermissions::SetPermissionsInternal(const std::string& attribute_file) c
+     }
+ }
+ 
++// KikiEmu uses a UUID-selected virtio-blk disk, not MMC/NVME/SCSI. Keep
++// each transport's parent distinct (including its PCI function); do not
++// classify every disk on the same platform/PCI controller as a boot disk.
++static bool FindVirtioBlockDevice(const std::string& path, std::string* result) {
++    if (!StartsWith(path, "/devices/")) return false;
++    auto start = path.find("/virtio", 9);
++    if (start == std::string::npos) return false;
++    auto end = path.find('/', start + 7);
++    if (end == std::string::npos || end == start + 7) return false;
++    auto number = path.substr(start + 7, end - start - 7);
++    if (number.find_first_not_of("0123456789") != std::string::npos) return false;
++    if (path.compare(end, 7, "/block/") != 0) return false;
++    *result = path.substr(9, end - 9);
++    return !result->empty();
++}
++
+ BlockDeviceInfo DeviceHandler::GetBlockDeviceInfo(const std::string& uevent_path) const {
+     BlockDeviceInfo info;
+ 
+@@ -255,6 +271,8 @@ BlockDeviceInfo DeviceHandler::GetBlockDeviceInfo(const std::string& uevent_path) c
+             info.type = "nvme";
+         } else if (FindScsiDevice(uevent_path, &info.str)) {
+             info.type = "scsi";
++        } else if (FindVirtioBlockDevice(uevent_path, &info.str)) {
++            info.type = "virtio";
+         }
+     } else if (FindPlatformDevice(uevent_path, &info.str)) {
+         info.type = "platform";
