@@ -92,8 +92,29 @@ The application script and integration audit include it, and
 `scripts/build-gpt-prototype.sh` explicitly builds both stages plus
 system/vendor/host boot tools before producing new boot materials.
 
-This checkpoint is not proof of corrected boot, data capacity/persistence,
-clean release output or source-lock/license compliance. Those gates remain
-mandatory. The public package contract is still a draft. The prototype
+## Corrected GPT boot and persistence — 2026-10-01
+
+R3 rebuilt both init stages and system/vendor with the virtio UUID patch.
+The single 32-GiB disk now boots Android 17 / Linux 7.3.0-rc4-4k to HOME,
+SDL/VirGL GLES3.1 at 120 Hz, 1003x1556, 288 dpi and font scale1.5.
+The camera bridge/channel was enabled; fresh-GPT camera/photo regression
+acceptance is still pending, not inferred from the enabled channel.
+
+`/dev/block/by-name` resolves boot/system/vendor/misc/userdata to vda1-vda5.
+F2FS was formatted on the newly created vda5 and exposes33,102,495,744 bytes.
+A data marker survived a normal guest shutdown and a second full boot;
+the persistent QCOW2 has no snapshot/backing dependency. Both tests shut
+down normally with data unmounted/synced. The host image was about1.30GB
+after initialization, not preallocated to32GiB.
+
+This also exposed a separate user-facing failure: AOSP phone-tier rounding
+reported64GB for32GiB and derived ~31GB as Android/system usage. Underlying
+whole-disk/data capacities were correct. The tracked, product-gated exact
+storage framework patch now uses mount/vold's actual parent block-device
+size in both StorageManager and StorageStatsService. Its new candidate
+is building; Settings capacity acceptance is NOT yet claimed.
+
+These results do not prove clean release output or source-lock/license
+compliance. The public package contract is still a draft. The prototype
 launcher uses development endpoints; release/dev manager isolation is not
 implemented merely by adding GPT or a boot UUID.

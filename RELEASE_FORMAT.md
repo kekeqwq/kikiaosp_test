@@ -65,6 +65,15 @@ Filesystem formatting must use the actual new userdata partition. Choosing 200 G
 
 CLI suffix `g` means GiB (2^30 bytes); publish this in English help. 128 and 200 are examples, not fixed presets or defaults. Guest available capacity excludes system/service partitions and filesystem overhead. Host physical use includes allocated QCOW2 clusters, metadata, cache and logs; neither exact equality with guest used bytes nor immediate space reclamation after deletion is guaranteed.
 
+Android must report the exact TOTAL backing block-device capacity through its
+storage APIs, not round it up to a physical phone's marketing tier. Settings
+system/reserve usage must follow the actual installed layout/filesystems;
+never fake a fixed 8/10-GB system number. This product enables
+`ro.kikiaosp.exact_storage_size`; the tracked framework patch obtains the
+whole parent disk size through the existing mount/vold interface. The
+installer record, kernel block size, vold, StorageStats and Settings must
+agree in bytes, allowing only the documented GB/GiB display-unit conversion.
+
 Changing virtual disk size, partition layout, system payloads or product identity through `set` is prohibited. A validated `set --qemu` may change the launcher runtime binding for the NEXT start, but may not change this installed disk ABI or invoke a silent migration. Detect external size/layout modification at startup and refuse to boot rather than silently repairing, resizing or formatting an established instance.
 
 ## 5. Reader and compatibility rules

@@ -12,16 +12,16 @@ output=$(realpath -m "$3")
 [[ ! -e $output ]] || { echo 'Output must be a new directory.' >&2; exit 2; }
 bash "$repo_root/scripts/sync-device-tree.sh" "$aosp_root"
 uuid_patch="$repo_root/patches/aosp-kikiaosp-init-virtio-boot-uuid.patch"
-if git -C "$aosp_root" apply --check "$uuid_patch"; then
+if git -C "$aosp_root" apply --check "$uuid_patch" >/dev/null 2>&1; then
     git -C "$aosp_root" apply "$uuid_patch"
-elif ! git -C "$aosp_root" apply --reverse --check "$uuid_patch"; then
+elif ! git -C "$aosp_root" apply --reverse --check "$uuid_patch" >/dev/null 2>&1; then
     echo 'Tracked virtio UUID patch does not match AOSP init.' >&2
     exit 1
 fi
 storage_patch="$repo_root/patches/aosp-kikiaosp-exact-storage-size.patch"
-if git -C "$aosp_root" apply --check "$storage_patch"; then
+if git -C "$aosp_root" apply --check "$storage_patch" >/dev/null 2>&1; then
     git -C "$aosp_root" apply "$storage_patch"
-elif ! git -C "$aosp_root" apply --reverse --check "$storage_patch"; then
+elif ! git -C "$aosp_root" apply --reverse --check "$storage_patch" >/dev/null 2>&1; then
     echo 'Tracked exact storage-capacity patch does not match AOSP framework.' >&2
     exit 1
 fi
