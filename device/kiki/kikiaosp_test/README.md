@@ -10,7 +10,8 @@ not a phone and has no telephony hardware.
 
 The product composes AOSP `core_64_bit.mk` and `core_minimal.mk`, then adds the
 user-facing APKs needed for normal use: `Launcher3QuickStep`, `Settings`,
-`Gallery2`, `WallpaperPicker2`, `SystemUI`, and `LatinIME`. AOSP's existing
+`Gallery2`, `Camera2`, `DocumentsUI`, `ThemePicker`, `KikiCustomizationResources`,
+`SystemUI`, and `LatinIME`. AOSP's existing
 `MediaProvider` supplies the system Photo Picker. `KikiWindowTest` remains a
 source-level regression fixture and is not installed. The product does not inherit the broad
 `aosp_arm64.mk` GSI product, nor does it apply a large after-the-fact package
@@ -88,6 +89,9 @@ This confirms that the accelerated render path is real; it does not mean the
 desktop is fully responsive. Launcher, Settings, and notification-shade
 interaction still show substantial latency. The outstanding issue is
 end-to-end buffer release/render/present latency, not missing VirGL
-initialization. The specific frame-rate validation used snapshot mode with
+initialization. The historical frame-rate validation used snapshot mode with
 empty product and system_ext images; the newly separated Gallery2/
-WallpaperPicker2 product partitions still need their own boot validation.
+WallpaperPicker2 partitions mentioned in that historical test are not today's
+default. The accepted 2026-09-30 CP2A system contains integrated product/system_ext,
+including ThemePicker colors/icons and real Surface camera photo capture. See
+the repository root README and KikiEmu's surface-main-20260930 profile.

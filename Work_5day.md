@@ -773,3 +773,4 @@ serial and stderr logs remain in `aosp/windows-arm64-test/` on host 106.
 - Windows 仓库更新默认统一启动器、镜像清单和收集器，保留8vCPU/4GiB、1003×1556、288dpi、字体1.5、客机120Hz、SDL/VirGL、无Grab/console；不改宿主显示。内核 main `8984112` 已包含 fence修复 `02753ae`，本次无内核代码改动。
 - system/vendor 和兼容 product/system_ext 冻结在185设备仓库 output，运行辅助 tar 保留并在清单中明确；均不进 Git。CP2A 实际 product/system_ext 在 system 内，旧独立辅助盘不是当前 ThemePicker 的加载来源。README 改为当前主线及完整准备/构建/交付步骤，不再误导启动旧软件镜像。
 - 相机采集/转换/JPEG并非全GPU零拷贝，操作延迟仍未解决；动画APK回调FPS不能等同屏幕呈现。照片、整桌截图、日志及临时诊断不上传公开仓库。/dev/sdb1 干净源码盘仍保持卸载。
+- 主线收集器已从185重新取回完整镜像组及tar辅助包，全部SHA/长度/压缩包内容通过；新默认入口在Surface重新启动，DISPLAY_READY=1003×1556/288dpi/字体1.5/120Hz，boot_completed=1、VirGL GLES3.1、ThemePicker实际Colors界面正常、crash buffer为空。通过Apply写入preset D85C9B的system_palette/accent_color与TONAL_SPOT，SystemUI accent overlay启用，证明颜色并非只有菜单。验证在snapshot内，不改冻结userdata；Windows全桌截图仅留Downloads/temp。
