@@ -121,4 +121,6 @@ kikiaosp-runtime-support-20260926.tar.zst
 
 ## 开发与隐私
 
+新增构建/打包脚本按其 `SPDX-License-Identifier: GPL-2.0-or-later` 使用 [GPL](LICENSE)。已有文件的许可标识优先，例如相机源码保持 Apache-2.0；上游代码及第三方组件保留原许可，不能因本项目选择 GPL 而统一重标。候选包会携带许可及来源记录，公开发版仍须完成对应源码/依赖许可审计。
+
 功能另开分支，审计、增量构建、Windows 实测后合并 main。记录版本、manifest、镜像 SHA、启动参数和限制于 Work_5day.md。照片及 Windows 整桌截图含私人内容，只留本机 `~/Downloads/temp`，不提交；诊断日志、临时 patch、失败产物也不能当生产成果推送。用于干净回溯的 `/dev/sdb1` 源码盘已经同步完成并卸载，不在日常开发中修改。

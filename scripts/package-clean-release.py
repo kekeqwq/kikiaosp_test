@@ -328,12 +328,19 @@ def main():
             name = "aosp.txt" if index == 1 else f"aosp-{index:02}.txt"
             (stage / "licenses" / name).write_bytes(part)
         (stage / "licenses/kernel.txt").write_bytes(kernel_text)
-        (stage / "licenses/kikiaosp.txt").write_bytes((record / "device-source/LICENSE").read_bytes())
+        # GPL terms accompany our SPDX GPL-2.0-or-later build/packaging code.
+        # Older frozen device revisions predate the root license attachment;
+        # do not invent a newer built device commit to attach standard terms.
+        builder.run(["git", "ls-files", "--error-unmatch", "LICENSE"], repo)
+        file_record(repo / "LICENSE")
+        (stage / "licenses/kikiaosp.txt").write_bytes((repo / "LICENSE").read_bytes())
         (stage / "licenses/sources.txt").write_text(
             "KikiAOSP source identities\n\nAOSP: https://android.googlesource.com/platform/manifest\n"
             "Exact per-project commits: provenance/source-lock.json manifestXml\n"
             f"Device/patch/build recipe: https://github.com/kekeqwq/kikiaosp_test/tree/{audit['deviceCommit']}\n"
             f"Kernel flake/config/patches: https://github.com/kekeqwq/kikiaosp_kernel/tree/{audit['kernelCommit']}\n"
+            f"Package recipe and GPL terms: https://github.com/kekeqwq/kikiaosp_test/tree/{pipeline_commit}\n"
+            "GPL-2.0-or-later applies to files so marked; e.g. camera source retains its Apache-2.0 SPDX license.\n"
             "Third-party code retains its original licenses. Public release still requires the corresponding-source/license audit.\n",
             encoding="utf-8")
         lock = {
