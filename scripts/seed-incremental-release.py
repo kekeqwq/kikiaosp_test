@@ -22,6 +22,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--old-preparation', type=Path, required=True)
     p.add_argument('--old-record', type=Path, required=True)
+    p.add_argument('--old-pipeline', type=Path, required=True)
     p.add_argument('--aosp', type=Path, required=True)
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--preparation', type=Path, required=True)
@@ -30,9 +31,10 @@ def main():
     a = p.parse_args()
     device = Path(__file__).resolve().parent.parent
     old = a.old_record.resolve(strict=True)
-    spec = importlib.util.spec_from_file_location('old_packager', old / 'device-source/scripts/package-clean-release.py')
+    spec = importlib.util.spec_from_file_location('old_packager', a.old_pipeline.resolve(strict=True) / 'scripts/package-clean-release.py')
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
+    mod.builder.clean(a.old_pipeline)
     source, audit, raw, _, _, _ = mod.audit_inputs(a.old_preparation.resolve(strict=True), old)
     aosp, out = a.aosp.resolve(strict=True), a.output.resolve(strict=True)
     if aosp == Path(audit['aosp']) or out == Path(audit['output']):
