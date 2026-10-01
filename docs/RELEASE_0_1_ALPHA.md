@@ -48,13 +48,19 @@ Actual Windows ARM64 SDL/VirGL/120-Hz fresh32/200-GiB systems booted with
 correct capacity reporting and retained data across graceful restart;200GiB
 also booted after its original download path became unavailable. The final
 manager update repeated a fresh32-GiB Android17/Linux7.3.0-rc4-4k HOME boot.
+Its final managed-close regression passed three boots and two real SDL
+close-button/reboot cycles: three camera JPEGs remained byte-identical and
+decodeable without manual sync, and HOME appeared without guest input on
+the second and third boots. This fix requires BOTH the final launcher and
+the five-patch QEMU recipe; it does not change the clean system ZIP.
 Launcher3/Settings/SystemUI, external input, Ethernet, speaker, real Surface
 front/rear cameras, Gallery/DocumentsUI and ThemePicker are the accepted
 baseline. Camera shared-hardware availability can change; closing the camera
 releases its device. Actual runtime and user-test boundaries are recorded in
 [KikiEmu's release record](https://github.com/kekeqwq/KikiEmu/blob/main/RELEASE_0_1_ALPHA.md).
 
-The user reported successful initialization and authorized Alpha publication.
+The user reported successful initialization and explicitly authorized Alpha
+publication on 2026-10-01 after the managed-close system regression.
 The final setup/public CLI were not executed by the agent; installer/user
 acceptance is not falsely claimed as developer automation. The old independent
 Dev/concurrency gate was withdrawn, not passed.
