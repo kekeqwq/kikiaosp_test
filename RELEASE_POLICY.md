@@ -1,8 +1,8 @@
 # KikiAOSP 0.1 Alpha release policy
 
-Status: implementation draft, 2026-09-30. This records agreed release constraints and implementation gates; it is not a claim that packaging, installation or release isolation has already passed acceptance.
+Status: clean test candidate, 2026-10-01. Independent pinned-source/output construction produced the actual validated0.1.0-alpha ZIP; native Windows32/200-GiB instances have booted and persisted data through normal reboot. KikiEmu's matching R8 installer is compiled, not installed or user-accepted. Actual identities/hashes/evidence are recorded in the [consumer candidate record](https://github.com/kekeqwq/KikiEmu/blob/feat/release-0_1-alpha/CANDIDATE_TEST_20261001.md). No accepted public Release or tag is claimed.
 
-The user-agreed constraints (clean installation materials only, user-created immutable total capacity, English product text and safe development while releases run) are mandatory. The proposed boot/GPT encoding remains a technical draft pending prototype validation; that does not permit relaxing these constraints to ship a developer disk or postpone isolation.
+The user-agreed constraints remain: clean installation materials only, user-created immutable total capacity, English product text and a stable producer/consumer format. On2026-10-01 the user withdrew strict separate release/Dev isolation: subsequent development uses the same packaged baseline and advances versions0.2/0.3. This does not permit shipping developer disks, overwriting user storage or removing existing per-instance safety checks.
 
 ## Ownership and deliverables
 
@@ -23,39 +23,48 @@ The user-agreed constraints (clean installation materials only, user-created imm
 
 The old README's frozen bundles remain development rollback references only. No public release may be made through the old support-tarball collector path.
 
-## Identity and release/dev isolation: REQUIRED BEFORE 0.1
+## Versioned-package identity and per-instance safety
 
-| Boundary | Installed release | Development |
-| --- | --- | --- |
-| SDL title | `KikiEmu` with optional instance ID | `QEMU` / explicitly marked Dev |
-| Guest brand/version/model | `KikiAOSP 0.1 Alpha`, release build identity | `KikiAOSP Dev`, development build identity |
-| Guest serial identity | Unique `kiki-release-<instance UUID>` boot identity | Unique `kiki-dev-<instance UUID>` identity |
-| Manager records | User-scoped release registry | Separate dev registry; never change release default |
-| Process/runtime identity | Recorded exact EXE path, start identity, UUID and release runtime | Explicit development runtime/identity |
-| ADB | Private release server/endpoint and exact instance transport | Separate server/endpoints and Dev alias |
-| QEMU control | Per-instance release control endpoint | Separate development control endpoint |
-| Camera/other IPC | Per-instance release namespace/endpoint | Separate development namespace/endpoint |
-| Storage/logs/mutexes | Per-instance user release locations | Development-only locations and locks |
+The earlier mandatory independent Dev channel/registry/tool suite and
+release-A/Dev-B concurrency gate are superseded by the user's2026-10-01
+instruction. Their former matrix is NOT claimed passed. Develop from this
+clean package baseline, retain format1 and test a new version as an ordinary
+KikiEmu instance with NEW storage and its explicit ID. Historical multi-disk
+Dev builds remain rollback references; they are not the future repair route.
+
+Keep the existing KikiEmu title, actual KikiAOSP version/model/fingerprint,
+unique instance serial, recorded process creation/path/hash identity, storage
+ownership and per-instance control/ADB/camera endpoints. Independent Dev
+branding/registry/launcher is no longer a required deliverable.
 
 Brand fields that may safely change must change BEFORE the public build: product model/manufacturer/display version, build ID/fingerprint/channel and application/installer/window branding. Android version remains 17. Do not rename upstream Android package IDs, the `ranchu` hardware/init protocol or required HAL/service identifiers just to add branding. Device product `kikiaosp_test` remains the established build target.
 
-A guest serial/model is NOT transport isolation. TCP `adb devices` usually shows its address/port; `adb devices -l` can expose model/product metadata. KikiEmu must use its own server and exact transport, expose an unambiguous `kikiemu adb --id NN` route, and label its own instance records/commands. A Dev guest-name suffix alone is insufficient.
+A guest serial/model is NOT an authority check. KikiEmu's built-in `adb --id NN --shell COMMAND` uses its recorded transport directly, without a global server. Ordinary Platform Tools is also supported: find the current ADB endpoint in `kikiemu info --id NN`, connect that port and always use explicit `adb -s ADDRESS:PORT`. See the [user guide](https://github.com/kekeqwq/KikiEmu/blob/feat/release-0_1-alpha/QUICK_START.md#connect-ordinary-android-platform-tools-adb). Ports are allocated on every boot; an empty ordinary `adb devices` list before connecting is not proof of guest failure.
 
 Allocate collision-safe per-instance loopback endpoints or namespaced pipes; do not hardcode the developer's 5555/4447/4455 for installed users. Register endpoint ownership and bound startup retries. No global `adb kill-server`, process-name kills, unscoped `adb shell`, title-only process selection, or changing host IME/keyboard/display settings as runtime setup. Stop/control operations verify the stored process instance and control endpoint, accounting for PID reuse.
 
-### Development while an installed release is in use
+### Subsequent fixes and versions
 
-This is a permanent release invariant, not a task deferred until the first repair. An installed release is pinned to immutable OS/boot identity and the validated user-configured QEMU bin/runtime identity. Development does not read or write that release runtime, release installation directories, user disks, default-instance selection, authorized keys, mutexes or endpoint registrations. No development tool may select release targets merely because they are the only connected ADB transport or the only QEMU process.
+Build reviewed source changes, generate a new clean installation ZIP under the
+same contract, create NEW test storage through KikiEmu and verify that explicit
+instance. After acceptance, advance the version to0.2,0.3 and so on. In0.1,
+there is no automatic/in-place OS replacement or disk resize. Do not overwrite
+old published asset bytes, an established disk or an in-use QEMU runtime.
 
 Ship launcher-owned libraries privately. User-provided QEMU must have its required dependencies in its own validated bin/runtime directory; do not add a developer's MSYS2 DLL directory or search PATH as a fallback. Save normalized paths and pinned byte identities at create/set and revalidate before start. Building/installing a Dev QEMU uses a separate output directory, never updates a running installed release or its configured runtime. Installing a future launcher release must not replace it; existing instances retain their compatible binding until explicit `set --qemu` passes validation for the next start.
 
-Keep release/dev package channels, launch modes and registry namespaces distinct. A developer command against a release UUID/endpoint must fail closed; a debug package must not be installed by the public release path. Operations use exact UUID, executable path, process creation identity and owned control/ADB endpoints. ADB branding improves observability but is not the authority check.
+The consumer's implemented channel/UUID/process/storage checks remain in place;
+the requirement change does not remove them. New test packages use the normal
+validated package/instance path, not forged Dev metadata or bypassed ownership.
+Source/build identity remains frozen in each package and cannot be changed by
+editing a runtime resource configuration.
 
 Host hardware is shared: do not steal a camera, reconfigure the host audio/display/keyboard/GL driver, restart Windows or exhaust host resources as an automatic development step while a release is in use. If a test needs a shared-device or global-driver change, stop and arrange a separate test environment or explicit user coordination. Resource contention can still affect timing; isolated namespaces alone do not promise performance isolation or immunity from host-driver failures.
 
-Mandatory acceptance: keep release instance A running with a persistent marker/app state, then build Dev, start Dev B, change B's resource configuration, run scoped ADB and camera tests, stop/restart B and close Dev tools. Verify A's process/control identity, registry/default, disk/boot hashes where immutable, data marker, input and operation remain intact. Detect deliberate targeting mistakes and endpoint collisions and require explicit rejection. Test these boundaries whenever launcher/IPC/device-identity code changes, not only at release tagging.
-
-Release and development channels are frozen into package/build metadata; a configuration edit cannot turn a user release into a development target. Development diagnostics must refuse release-owned instances. Test installing/running a release while launching, stopping and rebuilding Dev WITHOUT closing, changing or writing the release instance. A failure here blocks 0.1 publication; do not defer to a corrective re-release.
+Keep per-instance wrong-process/endpoint/storage rejection tests when changing
+manager or IPC code. The old separate-Dev concurrency regression is no longer
+a0.1 handoff/publication gate. Do not relabel it as passed or promise isolation
+from shared host resource contention.
 
 ## Mutable vs immutable configuration
 
@@ -139,7 +148,7 @@ validator on the newly written ZIP. Keep the packaging-tool commit separate
 from the actual built device commit. Write `.sha256` and a local
 `package-audit.json`; the audit can contain local Nix paths, must NOT enter the
 ZIP or be uploaded as a public asset. A validated ZIP is still NOT a boot,
-native consumer, concurrent Dev/release, user-installer or publication result.
+native consumer, user-installer or publication result.
 
 `create` requires system package, storage destination, TOTAL capacity and QEMU bin directory (`--qemu`). Performance preset is optional. After creation the capacity/layout/source identity are immutable. `set --size`, reformat, replacing the OS payload or changing partition layout is forbidden in 0.1. KikiEmu accepts `--create`/`--set` command aliases as well.
 
@@ -157,7 +166,7 @@ Presets preserve the same validated SDL/VirGL/120-Hz/native-resolution behavior.
 - Confirm actual total virtual capacity, real F2FS data capacity, sparse host usage and successful fresh initialization. Install an APK/save a photo, shut down normally, reopen, and verify persistence.
 - Changing memory/CPU affects the next boot. Unsupported capacity changes and concurrent access to the same disk are refused. Double-clicking an already-running instance activates its window rather than opening a second writer.
 - Native GUI/input/keyboard/Ethernet/audio/front-rear camera/Settings/files/ThemePicker/120-Hz mode regressions pass on the tested Surface. No extra console/Grab window and no silent software fallback. Keep known latency/security limits in release notes.
-- Release/dev parallel-isolation tests pass, including ADB, camera conflicts, process selection and restarting Dev. If both request a physical camera, report ownership/busy instead of stealing it.
+- Retain per-instance process/endpoint/storage rejection checks and release a physical camera on close. Report shared-device ownership/busy instead of stealing it. The withdrawn independent Dev/concurrency gate is not required; no host performance isolation is promised.
 - Uninstall removes application binaries, owned PATH entry and shortcuts only; keep user disks and data by default. Reinstall can recover retained instance records.
 - Explicit delete acceptance: a live target is force-stopped and only its registered storage removed; another live instance remains intact, deleting the default clears selection, and malformed paths/foreign owner markers/PID reuse/reparse redirection reject before effects. Test interrupted/partial removal retaining a recoverable record. The agent's isolated library fixtures do not replace user-owned public CLI acceptance.
 - Launcher dependencies and corresponding source/license materials are complete. QEMU build/deployment and host GL prerequisites are documented and checked; do not assume the recipient has the developer's MSYS2 PATH or custom host GL installation. Uninstall does not delete user-provided QEMU.

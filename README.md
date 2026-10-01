@@ -8,19 +8,21 @@
 
 干净发行构建另选 `kikiaosp_test_arm64_phone_release-cp2a-userdebug`，设备仍为 `kikiaosp_test`；普通 phone 目标保留为 Dev。先完成 `scripts/prepare-clean-release.py` 的冻结源码审计，再用 `scripts/build-clean-release.py` 在新的独立输出中重建内核、system/vendor 和源码生成的 initramfs/boot-v4。完整命令、阶段记录及严格恢复规则见 [RELEASE_POLICY.md](RELEASE_POLICY.md#clean-release-build-target-and-pipeline)。这条新流水线产出的是候选输入，不等于 ZIP 打包或系统验收完成，旧开发 bundle 不参与发版。
 
-0.1 已在独立分支开始实现，尚未构建或公开已验收的发布包。[RELEASE_FORMAT.md](RELEASE_FORMAT.md) 是本仓库维护的系统安装包格式草案；[RELEASE_POLICY.md](RELEASE_POLICY.md) 约束干净构建、许可/来源、版本演进、发布门槛，以及正式实例运行期间可安全推进开发的隔离要求。KikiEmu 消费同一合同，不能另行猜测文件名或私自更换包形式。原型通过后冻结 format version 1，由 schema、语义检查和双方兼容性测试强制执行。
+0.1 已在独立分支完成实际干净系统包生成，尚未公开已验收的发布包。[RELEASE_FORMAT.md](RELEASE_FORMAT.md) 和双方固定 schema 定义当前 format-1；[RELEASE_POLICY.md](RELEASE_POLICY.md) 约束干净构建、许可/来源、版本演进和发布门槛。KikiEmu 消费同一合同，不能另行猜测文件名或私自更换包形式。以后0.2／0.3仍按同一格式打包测试，不更换用户读取形式。按用户2026-10-01的新要求，取消严格的独立 Dev 通道／并行隔离门槛，保留基本实例控制安全检查。
 
 系统包与运行器独立模块化：本仓库的 ZIP 只交付系统必需文件、配套内核/initramfs 与来源/许可记录，不包含 QEMU、Windows 程序或用户磁盘。KikiEmu 的 create 另要求 `--qemu <bin目录>`；set 可更换兼容 QEMU 路径，下次启动生效，不改变已有系统/磁盘 ABI。合适的原生 ARM64 QEMU 构建/运行目录导出步骤由 [KikiEmu README](https://github.com/kekeqwq/KikiEmu) 维护。setup.exe/CLI 的用户视角验收交由用户，开发侧负责构建检查和系统本身验证，未收到验收结论前不公开发版。
 
 共用机器合同已保存到 [contracts/format-1](contracts/format-1/README.md)，Windows 消费端按设备仓库提交和文件哈希固定引用，不在运行时下载浮动规范。Linux 使用 `python scripts/system-package.py --self-test` 检查24个共用清单样例，`python scripts/test-system-package.py` 检查15个隔离 ZIP/来源样例；`--validate /path/to/system.zip` 核验已有符合合同的包。这些只证明读取/拒绝规则，测试 ZIP 内核和文件系统是假数据，不可启动、不可发给用户当系统包。
 
-真实候选的生产入口已加入：`scripts/package-clean-release.py --preparation PREP_RECORD --build-record BUILD_RECORD --output NEW_PACKAGE_DIRECTORY`。它拒绝未完成/开发目标，重核精确上游与冻结设备/内核、完整集成树、boot 配方和镜像哈希，将必要的 sparse 文件系统转换成 raw EROFS，并以本次构建的 fsck.erofs 检查镜像全部文件及实际 release 属性，保留镜像内生成的原始许可记录。最后只按 format-1 白名单生成 ZIP 和 SHA-256；额外本地 package-audit.json 不进包、不作为发布资产。`python scripts/test-package-clean-release.py` 的11项隔离检查通过，只用不可启动假数据；真实干净 ZIP 仍须等待独立构建成功，并通过 Windows 系统回归及双方验收，不能提前宣称发版完成。
+真实候选的生产入口为 `scripts/package-clean-release.py --preparation PREP_RECORD --build-record BUILD_RECORD --output NEW_PACKAGE_DIRECTORY`。它拒绝未完成/开发目标，重核精确上游与冻结设备/内核、完整集成树、boot 配方和镜像哈希，将必要的 sparse 文件系统转换成 raw EROFS，并以本次构建的 fsck.erofs 检查镜像全部文件及实际 release 属性，保留镜像内生成的原始许可记录。最后只按 format-1 白名单生成 ZIP 和 SHA-256；额外本地 package-audit.json 不进包、不作为发布资产。11项隔离包装检查不代替真实构建；2026-10-01独立构建／实际包装已完成，Windows系统回归结果见下方候选记录，公开发版仍须用户验收。
 
-已经新增并实测 [源码生成 boot/initramfs 的开发原型](docs/BOOT_PAYLOAD.md)：当前产品的静态 first-stage init + tracked fstab + AOSP mkbootfs/mkbootimg，不使用历史 recovery ramdisk。新的单盘GPT32/200 GiB磁盘均可首次格式化完整F2FS、启动到SDL/VirGL/120Hz桌面，并跨正常关机/重启保留数据。容量统计已去掉手机营销档位取整及虚构临时文件下限，设置页显示真实用量，见[GPT存储验证记录](docs/GPT_STORAGE_PROTOTYPE.md)。干净发行输出、真实ZIP生产消费与正式/Dev隔离仍待实现/验收，不能将这些开发原型当成发行包。
+源码生成boot/initramfs的配方和先前原型过程见 [BOOT_PAYLOAD.md](docs/BOOT_PAYLOAD.md)：当前产品静态first-stage init、tracked fstab和AOSP mkbootfs/mkbootimg，不使用历史recovery ramdisk。单盘GPT32／200 GiB可首次格式化完整F2FS、进入SDL/VirGL/120Hz桌面，并跨正常关机／重启保留数据；容量统计采用真实块盘与文件系统数据，见 [GPT存储原型记录](docs/GPT_STORAGE_PROTOTYPE.md)。旧原型资产不当发行包使用；本轮干净发行源／输出、真实ZIP和Windows回归另有独立身份与记录，见下方候选说明。
 
 公开交付仅包含干净生成的系统安装材料（配套 kernel/initramfs 的 boot payload、EROFS system/vendor、清单及来源/许可）；不发布整盘、userdata、已初始化 misc/metadata 或旧支持 tarball。用户通过 KikiEmu 自行创建固定总容量、动态占用的磁盘，再安装系统。容量只在 create 时选择，创建后不可 set；内存/vCPU 等运行资源配置下次启动生效。
 
-正式版在发版前完成 KikiEmu 窗口、KikiAOSP 版本/型号/构建身份、实例 serial/channel、独立 ADB/控制/相机端点和私有运行库的隔离。名字不是安全边界；开发工具必须拒绝误选正式实例。正式实例使用中的并行开发回归是强制发版门槛，不能等用户受影响后再补发修复版。
+2026-10-01干净候选 `KikiAOSP-0.1.0-alpha-arm64.zip` 为834421223字节，SHA-256为`73a184068b2c1b5576add96bcbadf4621bf3c3998c7f01fffeb624ee44aad42a`；只含boot/system/vendor、清单及来源／许可，不含用户磁盘或QEMU。Windows原生SDL/VirGL/120Hz下32／200 GiB新实例均已启动并保留数据重启，200 GiB还验证了移开原始ZIP后仍可启动。配套R8 setup和实际测试边界见 [KikiEmu候选记录](https://github.com/kekeqwq/KikiEmu/blob/feat/release-0_1-alpha/CANDIDATE_TEST_20261001.md)。安装器／公开CLI验收由用户执行，尚未发布GitHub Release；不是完整第三方源码／许可审计通过的声明。
+
+后续开发从该包基线修补源码，生成同格式新版本，交给KikiEmu在**新storage**中安装测试，再推进0.2、0.3。已有系统不自动替换；已发布版本的文件不覆盖。窗口和构建品牌保持KikiEmu／KikiAOSP；已有实例UUID、ADB／控制／相机端点及磁盘所有权核验保留，不再要求另一套Dev启动器和registry。
 
 ## 当前已验收主线 — 2026-09-30
 
