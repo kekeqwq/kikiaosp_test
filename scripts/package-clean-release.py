@@ -371,7 +371,7 @@ def main():
         manifest = {
             "kind": "org.kiki.kikiaosp.system", "formatVersion": 1, "systemVersion": VERSION,
             "product": "kikiaosp_test", "channel": "release", "architecture": "aarch64", "pageSizeBytes": 4096,
-            "runtimeAbi": "kiki-arm64-whpx-virgl-gpt-v1", "minimumLauncherVersion": VERSION,
+            "runtimeAbi": "kiki-arm64-whpx-virgl-gpt-v1", "minimumLauncherVersion": "0.1.0-alpha",
             "layoutVersion": "gpt-v1", "sectorSizeBytes": 512, "alignmentBytes": 1048576, "minimumDataBytes": 8 << 30,
             "payloads": payloads, "sourceLock": file_record(stage / "provenance/source-lock.json", "provenance/source-lock.json"),
             "licenses": licenses, "buildIdentity": {"displayVersion": MODEL, "model": MODEL, "fingerprint": FINGERPRINT,
