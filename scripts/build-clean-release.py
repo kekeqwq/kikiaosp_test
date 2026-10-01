@@ -118,7 +118,7 @@ def main():
     expected = {"recipe": "kikiaosp-release-v1", "deviceCommit": device_commit,
                 "kernelCommit": kernel_commit, "manifestSha256": source["manifestSha256"],
                 "aosp": str(aosp), "output": str(out), "product": "kikiaosp_test_arm64_phone_release",
-                "systemVersion": "0.2.0-alpha", "sharedInputs": "Git objects only; no development outputs/images"}
+                "systemVersion": "0.2.0-alpha", "sharedInputs": source.get("sharedInputs", "Git objects only; no development outputs/images")}
     if args.resume:
         if any(audit.get(key) != value for key, value in expected.items()):
             raise ValueError("Resume must use the SAME frozen commits, paths and recipe.")
