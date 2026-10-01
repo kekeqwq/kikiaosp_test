@@ -352,7 +352,7 @@ def main():
                      "manifestSha256": audit["manifestSha256"], "projectCount": source["projectCount"]},
             "device": {"repository": "https://github.com/kekeqwq/kikiaosp_test", "commit": audit["deviceCommit"]},
             "kernel": {"repository": "https://github.com/kekeqwq/kikiaosp_kernel", "commit": audit["kernelCommit"],
-                       "flakeLockSha256": audit["flakeLockSha256"], "sourceVersion": "7.3-rc4", "imageSha256": audit["kernelImageSha256"]},
+                       "flakeLockSha256": audit["flakeLockSha256"], "sourceVersion": "7.3-rc5", "imageSha256": audit["kernelImageSha256"]},
             "build": {"cleanSource": True, "independentOutput": True, "outputRecipe": "kikiaosp-release-v1",
                       "tools": {"mkbootfsSha256": boot_recipe["inputs"]["mkbootfsSha256"],
                                 "mkbootimgSha256": boot_recipe["inputs"]["mkbootimgSha256"],
