@@ -2,15 +2,15 @@
 
 面向 Windows ARM64 QEMU/WHPX 的 Android 17 测试设备。设备身份 `kikiaosp_test`，系统身份 `KikiAOSP`，产品目标 **`kikiaosp_test_arm64_phone-cp2a-userdebug`**；不是 Cuttlefish 手机产品。
 
-本仓库负责 AOSP 设备树、集成补丁、精确 manifest、审计和镜像构建，并维护系统安装包标准及干净打包/发版流程（0.1已开始独立分支实现，尚未发版）。[kikiaosp_kernel](https://github.com/kekeqwq/kikiaosp_kernel) 负责内核；[KikiEmu](https://github.com/kekeqwq/KikiEmu) 负责 Windows ARM64 QEMU/相机桥接的源码构建、开发资产收集校验、本地测试，以及终端用户的配置管理器/系统安装器/桌面启动入口。Linux 开发机不承担最终 QEMU 测试。
+本仓库负责 AOSP 设备树、集成补丁、精确 manifest、审计和镜像构建，并维护系统安装包标准及干净打包/发版流程。[0.1 Alpha 系统包](https://github.com/kekeqwq/kikiaosp_test/releases/tag/v0.1.0-alpha) 与 [KikiEmu 安装器](https://github.com/kekeqwq/KikiEmu/releases/tag/v0.1.0-alpha) 分别发布；终端用户不需要克隆这两个仓库。[kikiaosp_kernel](https://github.com/kekeqwq/kikiaosp_kernel) 负责内核；[KikiEmu](https://github.com/kekeqwq/KikiEmu) 负责 Windows ARM64 QEMU/相机桥接的源码构建、开发资产收集校验、本地测试，以及终端用户的配置管理器/系统安装器/桌面启动入口。Linux 开发机不承担最终 QEMU 测试。
 
 ## 0.1 Alpha 发布规划与固定协议
 
 干净发行构建另选 `kikiaosp_test_arm64_phone_release-cp2a-userdebug`，设备仍为 `kikiaosp_test`；普通 phone 目标保留为 Dev。先完成 `scripts/prepare-clean-release.py` 的冻结源码审计，再用 `scripts/build-clean-release.py` 在新的独立输出中重建内核、system/vendor 和源码生成的 initramfs/boot-v4。完整命令、阶段记录及严格恢复规则见 [RELEASE_POLICY.md](RELEASE_POLICY.md#clean-release-build-target-and-pipeline)。这条新流水线产出的是候选输入，不等于 ZIP 打包或系统验收完成，旧开发 bundle 不参与发版。
 
-0.1 已在独立分支完成实际干净系统包生成，尚未公开已验收的发布包。[RELEASE_FORMAT.md](RELEASE_FORMAT.md) 和双方固定 schema 定义当前 format-1；[RELEASE_POLICY.md](RELEASE_POLICY.md) 约束干净构建、许可/来源、版本演进和发布门槛。KikiEmu 消费同一合同，不能另行猜测文件名或私自更换包形式。以后0.2／0.3仍按同一格式打包测试，不更换用户读取形式。按用户2026-10-01的新要求，取消严格的独立 Dev 通道／并行隔离门槛，保留基本实例控制安全检查。
+0.1 已在独立源码／输出目录完成干净系统包生成、真实 Windows 系统回归，用户确认初始化成功并授权并入主线／发布 Alpha。完整来源和边界见 [发行记录](docs/RELEASE_0_1_ALPHA.md)。[RELEASE_FORMAT.md](RELEASE_FORMAT.md) 和双方固定 schema 定义当前 format-1；[RELEASE_POLICY.md](RELEASE_POLICY.md) 约束干净构建、许可/来源、版本演进和发布门槛。KikiEmu 消费同一合同，不能另行猜测文件名或私自更换包形式。以后0.2／0.3仍按同一格式打包测试，不更换用户读取形式。按用户2026-10-01的新要求，取消严格的独立 Dev 通道／并行隔离门槛，保留基本实例控制安全检查。
 
-系统包与运行器独立模块化：本仓库的 ZIP 只交付系统必需文件、配套内核/initramfs 与来源/许可记录，不包含 QEMU、Windows 程序或用户磁盘。KikiEmu 的 create 另要求 `--qemu <bin目录>`；set 可更换兼容 QEMU 路径，下次启动生效，不改变已有系统/磁盘 ABI。合适的原生 ARM64 QEMU 构建/运行目录导出步骤由 [KikiEmu README](https://github.com/kekeqwq/KikiEmu) 维护。setup.exe/CLI 的用户视角验收交由用户，开发侧负责构建检查和系统本身验证，未收到验收结论前不公开发版。
+系统包与运行器独立模块化：本仓库的 ZIP 只交付系统必需文件、配套内核/initramfs 与来源/许可记录，不包含 QEMU、Windows 程序或用户磁盘。KikiEmu 的 create 另要求 `--qemu <bin目录>`；set 可更换兼容 QEMU 路径，下次启动生效，不改变已有系统/磁盘 ABI。合适的原生 ARM64 QEMU 构建步骤由 [KikiEmu 主线说明](https://github.com/kekeqwq/KikiEmu/blob/main/QEMU_BUILD.md) 维护，下载主线 build.ps1 到用户自己的 QEMU checkout 中构建，KikiEmu 自动补齐缺失运行依赖，无需手动 prepare.ps1。setup.exe/CLI 的用户视角测试仍交由用户；开发侧不执行安装器，只验证构建和系统。
 
 共用机器合同已保存到 [contracts/format-1](contracts/format-1/README.md)，Windows 消费端按设备仓库提交和文件哈希固定引用，不在运行时下载浮动规范。Linux 使用 `python scripts/system-package.py --self-test` 检查24个共用清单样例，`python scripts/test-system-package.py` 检查15个隔离 ZIP/来源样例；`--validate /path/to/system.zip` 核验已有符合合同的包。这些只证明读取/拒绝规则，测试 ZIP 内核和文件系统是假数据，不可启动、不可发给用户当系统包。
 
@@ -20,7 +20,7 @@
 
 公开交付仅包含干净生成的系统安装材料（配套 kernel/initramfs 的 boot payload、EROFS system/vendor、清单及来源/许可）；不发布整盘、userdata、已初始化 misc/metadata 或旧支持 tarball。用户通过 KikiEmu 自行创建固定总容量、动态占用的磁盘，再安装系统。容量只在 create 时选择，创建后不可 set；内存/vCPU 等运行资源配置下次启动生效。
 
-2026-10-01干净候选 `KikiAOSP-0.1.0-alpha-arm64.zip` 为834421223字节，SHA-256为`73a184068b2c1b5576add96bcbadf4621bf3c3998c7f01fffeb624ee44aad42a`；只含boot/system/vendor、清单及来源／许可，不含用户磁盘或QEMU。Windows原生SDL/VirGL/120Hz下32／200 GiB新实例均已启动并保留数据重启，200 GiB还验证了移开原始ZIP后仍可启动。配套R8 setup和实际测试边界见 [KikiEmu候选记录](https://github.com/kekeqwq/KikiEmu/blob/feat/release-0_1-alpha/CANDIDATE_TEST_20261001.md)。安装器／公开CLI验收由用户执行，尚未发布GitHub Release；不是完整第三方源码／许可审计通过的声明。
+2026-10-01干净发行包 `KikiAOSP-0.1.0-alpha-arm64.zip` 为834421223字节，SHA-256为`73a184068b2c1b5576add96bcbadf4621bf3c3998c7f01fffeb624ee44aad42a`；只含boot/system/vendor、清单及来源／许可，不含用户磁盘或QEMU。Windows原生SDL/VirGL/120Hz下32／200 GiB新实例均已启动并保留数据重启，200 GiB还验证了移开原始ZIP后仍可启动。历史 R8 测试边界见 [KikiEmu候选记录](https://github.com/kekeqwq/KikiEmu/blob/main/CANDIDATE_TEST_20261001.md)，新管理器及最终发行材料见 [KikiEmu发行记录](https://github.com/kekeqwq/KikiEmu/blob/main/RELEASE_0_1_ALPHA.md)。用户授权发版不等于代理执行了安装器／公开 CLI 验收，也不等于所有硬件／商业 APK 均可用。
 
 后续开发从该包基线修补源码，生成同格式新版本，交给KikiEmu在**新storage**中安装测试，再推进0.2、0.3。已有系统不自动替换；已发布版本的文件不覆盖。窗口和构建品牌保持KikiEmu／KikiAOSP；已有实例UUID、ADB／控制／相机端点及磁盘所有权核验保留，不再要求另一套Dev启动器和registry。
 
