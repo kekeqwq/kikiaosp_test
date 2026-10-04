@@ -173,6 +173,9 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     com.android.hardware.audio \
     android.hardware.audio.output.prebuilt.xml
+# virtio-snd is paced by the real host device. Never drop PCM to repay an
+# independent emulator wall-clock budget or overflow a non-blocking MonoPipe.
+PRODUCT_VENDOR_PROPERTIES += ro.vendor.audio.kiki.synchronous_pcm=true
 # The Android media stream starts at its maximum index. Host-side speaker
 # volume remains under Windows control during emulator sessions.
 PRODUCT_SYSTEM_PROPERTIES += \

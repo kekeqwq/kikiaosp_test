@@ -14,6 +14,7 @@ integration_patches=(
   "$REPO_ROOT/patches/aosp-kikiaosp-init-virtio-boot-uuid.patch"
   "$REPO_ROOT/patches/aosp-kikiaosp-exact-storage-size.patch"
   "$REPO_ROOT/patches/aosp-kikiaosp-storage-category-floor.patch"
+  "$REPO_ROOT/patches/aosp-kikiaosp-synchronous-pcm.patch"
 )
 : > "$tmp/expected"
 for integration_patch in "${integration_patches[@]}"; do
@@ -57,6 +58,16 @@ git -C "$AOSP_ROOT" apply --reverse --check \
 git -C "$AOSP_ROOT" apply --reverse --check \
   "$REPO_ROOT/patches/aosp-kikiaosp-init-virtio-boot-uuid.patch" || {
   echo "AOSP source does not match the virtio boot-partition UUID patch" >&2
+  exit 1
+}
+git -C "$AOSP_ROOT" apply --reverse --check \
+  "$REPO_ROOT/patches/aosp-kikiaosp-synchronous-pcm.patch" || {
+  echo "AOSP source does not match the Kiki synchronous PCM patch" >&2
+  exit 1
+}
+grep -Fq 'ro.vendor.audio.kiki.synchronous_pcm=true' \
+  "$AOSP_ROOT/device/kiki/kikiaosp_test/kikiaosp_test_arm64_phone.mk" || {
+  echo "Kiki virtio-snd output must use lossless synchronous PCM backpressure" >&2
   exit 1
 }
 camera_main="$AOSP_ROOT/device/kiki/kikiaosp_test/camera/kikiaosp_main.cpp"

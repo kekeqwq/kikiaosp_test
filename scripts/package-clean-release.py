@@ -35,13 +35,13 @@ CONTRACT_HASHES = {
     "source-lock.schema.json": "023557c5bde711ef6721f7637f6316ca2f84fef983449c1212aa20c088232953",
 }
 FINISHED_PHASE = "clean-candidate-inputs-built-not-packaged-or-accepted"
-VERSION = "0.2.0-alpha"
-MODEL = "KikiAOSP 0.2 Alpha"
-FINGERPRINT = "KikiAOSP/kikiaosp_test/kikiaosp_test:17/CP2A.260605.016/KIKI_0.2.0_ALPHA:userdebug/test-keys"
+VERSION = "0.3.0-alpha"
+MODEL = "KikiAOSP 0.3 Alpha"
+FINGERPRINT = "KikiAOSP/kikiaosp_test/kikiaosp_test:17/CP2A.260605.016/KIKI_0.3.0_ALPHA:userdebug/test-keys"
 KERNEL_VERSION = "7.3.0-rc5-4k"
 RELEASE_PROPERTIES = {
     "ro.kikiaosp.build_channel": "release", "ro.kikiaosp.system_version": VERSION,
-    "ro.build.display.id": "KikiAOSP-0.2-Alpha", "ro.build.fingerprint": FINGERPRINT,
+    "ro.build.display.id": "KikiAOSP-0.3-Alpha", "ro.build.fingerprint": FINGERPRINT,
 }
 LICENSE_LIMIT = 4194304
 
@@ -117,6 +117,8 @@ def audit_inputs(preparation, record):
         if audit.get("verifiedProperties", {}).get(key) != expected:
             raise ValueError(f"Release build did not record the required property: {key}")
     product, tools = out / "target/product/kikiaosp_test", out / "host/linux-x86/bin"
+    if audit.get("verifiedVendorProperties", {}).get("ro.vendor.audio.kiki.synchronous_pcm") != "true":
+        raise ValueError("Release build did not record synchronous PCM vendor policy.")
     for name in ("system.img", "vendor.img"):
         verify_record(product / name, audit.get("images", {}).get(name, {}))
     boot_recipe = document(record / "boot-payload/boot-recipe.json")
@@ -223,6 +225,13 @@ def image_properties(root):
     return {key: props[key] for key in (*RELEASE_PROPERTIES, "ro.build.version.release")}
 
 
+def image_vendor_audio_policy(root):
+    props = properties(built_file(root, ("vendor/etc/build.prop", "vendor/build.prop", "etc/build.prop", "build.prop")))
+    if props.get("ro.vendor.audio.kiki.synchronous_pcm") != "true":
+        raise ValueError("Packaged vendor EROFS did not enable synchronous PCM.")
+    return {"ro.vendor.audio.kiki.synchronous_pcm": "true"}
+
+
 def notice_text(path):
     with gzip.open(path, "rb") as stream:
         raw = stream.read((128 << 20) + 1)
@@ -316,6 +325,8 @@ def main():
             builder.run([tools / "fsck.erofs", "--no-preserve", f"--extract={extracted}", stage / f"payload/{role}.img"], tools)
             if role == "system":
                 verified_props = image_properties(extracted)
+            else:
+                image_vendor_audio_policy(extracted)
             mandatory = built_file(extracted, ("system/etc/NOTICE.xml.gz", "etc/NOTICE.xml.gz"))
             paths = sorted({mandatory, *extracted.rglob("NOTICE.xml.gz")})
             if len(paths) > 32:

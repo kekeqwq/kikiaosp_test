@@ -100,6 +100,22 @@ class Guards(unittest.TestCase):
             with self.assertRaises(ValueError):
                 packager.image_properties(root)
 
+    def test_actual_vendor_policy_must_enable_synchronous_pcm(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "etc").mkdir()
+            path = root / "etc/build.prop"
+            for value in ("", "false", "TRUE", "1"):
+                path.write_text("ro.vendor.audio.kiki.synchronous_pcm=" + value + "\n")
+                with self.assertRaises(ValueError):
+                    packager.image_vendor_audio_policy(root)
+            path.write_text("ro.vendor.audio.kiki.synchronous_pcm=true\n")
+            self.assertEqual(packager.image_vendor_audio_policy(root),
+                             {"ro.vendor.audio.kiki.synchronous_pcm": "true"})
+            path.write_text(path.read_text() * 2)
+            with self.assertRaises(ValueError):
+                packager.image_vendor_audio_policy(root)
+
     def test_wrong_raw_filesystem_rejects_without_running_tool(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

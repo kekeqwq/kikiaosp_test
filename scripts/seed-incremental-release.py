@@ -56,7 +56,7 @@ def main():
     alias.symlink_to(out, target_is_directory=True)
     a.preparation.mkdir(parents=True)
     shutil.copytree(a.old_preparation / 'manifest-repo', a.preparation / 'manifest-repo')
-    mode = 'Audited 0.1 release source/output Btrfs reflink clone; incremental rebuild, no development inputs'
+    mode = f"Audited {audit['systemVersion']} release source/output Btrfs reflink clone; incremental rebuild, no development inputs"
     source.update(checkout=str(aosp), sharedInputs=mode, incrementalBaseDeviceCommit=audit['deviceCommit'])
     (a.preparation / 'prepare.json').write_text(json.dumps(source, indent=2) + '\n')
     a.record.mkdir(parents=True)
@@ -68,9 +68,14 @@ def main():
     (a.record / 'kernel-result').symlink_to(kernel_result, target_is_directory=True)
     snapshot = a.record / 'device-source'
     run('bash', snapshot / 'scripts/sync-device-tree.sh', aosp)
+    # Explicit versioned integration delta; all inherited 0.2 patches are
+    # audited by the old packager before cloning, never blindly reapplied.
+    audio_patch = snapshot / 'patches/aosp-kikiaosp-synchronous-pcm.patch'
+    run('git', '-C', aosp, 'apply', '--check', audio_patch)
+    run('git', '-C', aosp, 'apply', audio_patch)
     run('bash', snapshot / 'scripts/audit-aosp-integration.sh', aosp)
     value = dict(audit, deviceCommit=dc, kernelCommit=kc, aosp=str(aosp), output=str(out),
-                 systemVersion='0.2.0-alpha', phase='building-aosp', sharedInputs=mode,
+                 systemVersion='0.3.0-alpha', phase='building-aosp', sharedInputs=mode,
                  incrementalBaseRecord=str(old), incrementalBaseImageHashes=audit['images'],
                  kernelImageSha256=mod.builder.digest(kernel_result / 'boot/kernel'),
                  flakeLockSha256=mod.builder.digest(a.kernel / 'flake.lock'))

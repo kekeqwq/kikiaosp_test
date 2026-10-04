@@ -53,7 +53,7 @@ def build_environment(out):
         env.pop(key, None)
     # Relative logical out is important: multiple Android 17 modules reject
     # generated absolute paths outside TOP. physical out remains independent.
-    env.update(OUT_DIR=str(out), BUILD_NUMBER="KIKI_0.2.0_ALPHA", BUILD_USERNAME="KikiEmu",
+    env.update(OUT_DIR=str(out), BUILD_NUMBER="KIKI_0.3.0_ALPHA", BUILD_USERNAME="KikiEmu",
                BUILD_HOSTNAME="release-builder", SOONG_NINJA="ninja", USE_RBE="false", USE_REWRAPPER="false")
     return env
 
@@ -118,7 +118,7 @@ def main():
     expected = {"recipe": "kikiaosp-release-v1", "deviceCommit": device_commit,
                 "kernelCommit": kernel_commit, "manifestSha256": source["manifestSha256"],
                 "aosp": str(aosp), "output": str(out), "product": "kikiaosp_test_arm64_phone_release",
-                "systemVersion": "0.2.0-alpha", "sharedInputs": source.get("sharedInputs", "Git objects only; no development outputs/images")}
+                "systemVersion": "0.3.0-alpha", "sharedInputs": source.get("sharedInputs", "Git objects only; no development outputs/images")}
     if args.resume:
         if any(audit.get(key) != value for key, value in expected.items()):
             raise ValueError("Resume must use the SAME frozen commits, paths and recipe.")
@@ -187,12 +187,22 @@ def main():
                     if line and not line.startswith("#") and "=" in line:
                         key, value = line.split("=", 1)
                         props[key] = value
-        for key, value in {"ro.kikiaosp.build_channel": "release", "ro.kikiaosp.system_version": "0.2.0-alpha",
-                           "ro.build.display.id": "KikiAOSP-0.2-Alpha",
-                           "ro.build.fingerprint": "KikiAOSP/kikiaosp_test/kikiaosp_test:17/CP2A.260605.016/KIKI_0.2.0_ALPHA:userdebug/test-keys"}.items():
+        for key, value in {"ro.kikiaosp.build_channel": "release", "ro.kikiaosp.system_version": "0.3.0-alpha",
+                           "ro.build.display.id": "KikiAOSP-0.3-Alpha",
+                           "ro.build.fingerprint": "KikiAOSP/kikiaosp_test/kikiaosp_test:17/CP2A.260605.016/KIKI_0.3.0_ALPHA:userdebug/test-keys"}.items():
             if props.get(key) != value:
                 raise ValueError(f"Actual built release property mismatch: {key}={props.get(key)}")
         audit["verifiedProperties"] = {key: value for key, value in props.items() if key.startswith("ro.kikiaosp.") or key in ("ro.build.display.id", "ro.build.fingerprint")}
+        vendor_props = {}
+        for path in (product / "vendor/etc/build.prop", product / "vendor/build.prop"):
+            if path.is_file():
+                for line in path.read_text().splitlines():
+                    if line and not line.startswith("#") and "=" in line:
+                        key, value = line.split("=", 1)
+                        vendor_props[key] = value
+        if vendor_props.get("ro.vendor.audio.kiki.synchronous_pcm") != "true":
+            raise ValueError("Built vendor image did not enable Kiki synchronous PCM.")
+        audit["verifiedVendorProperties"] = {"ro.vendor.audio.kiki.synchronous_pcm": "true"}
         audit["images"] = {name: {"bytes": (product / name).stat().st_size, "sha256": digest(product / name)} for name in ("system.img", "vendor.img")}
         phase("clean-candidate-inputs-built-not-packaged-or-accepted")
     print("RELEASE_BUILD_INPUTS_READY", json.dumps(audit), flush=True)

@@ -106,13 +106,13 @@ def main():
     (output / 'aosp-pinned-manifest.xml').write_text(manifest, encoding='utf-8')
     (output / 'source-lock.json').write_text(json.dumps(lock, indent=2) + '\n')
     (output / 'aosp-notices.txt').write_text(notices, encoding='utf-8')
-    provenance = {'version': '0.2.0-alpha', 'packageSha256': sha(args.package),
+    provenance = {'version': '0.3.0-alpha', 'packageSha256': sha(args.package),
                   'builtDeviceCommit': build['deviceCommit'], 'kernelCommit': build['kernelCommit'],
                   'noticeIdentifiedCopyleftComponents': sorted(labels), 'projects': source_records,
                   'kernelSourceArchiveSha256': sha(output / 'linux-7.3-rc5-source.tar.gz')}
     (output / 'source-provenance.json').write_text(json.dumps(provenance, indent=2) + '\n')
     (output / 'BUILDING.txt').write_text(
-        'KikiAOSP 0.2 Alpha corresponding-source materials\n\n'
+        'KikiAOSP 0.3 Alpha corresponding-source materials\n\n'
         'Unpack device.tar and kernel-recipe.tar into separate Git-capable source trees.\n'
         'The Linux archive is the exact immutable Nix source before applying the two tracked recipe patches.\n'
         'kernel-recipe.tar contains flake.nix, flake.lock, configuration and patches; use nix build.\n'
@@ -128,7 +128,7 @@ def main():
         'This source kit contains no userdata/disk, credentials, developer logs or build output images.\n'
         'The public producer tag also records later packaging/documentation fixes; actual built device\n'
         'identity above, not that tag HEAD, is authoritative for the shipped system.\n')
-    destination = output.with_name('KikiAOSP-0.2.0-alpha-source-kit.tar.gz')
+    destination = output.with_name('KikiAOSP-0.3.0-alpha-source-kit.tar.gz')
     if destination.exists():
         raise ValueError('Never replace an existing source kit')
     with tarfile.open(destination, 'w:gz', compresslevel=4) as tar:

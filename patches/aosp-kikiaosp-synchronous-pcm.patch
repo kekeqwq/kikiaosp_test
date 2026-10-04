@@ -1,0 +1,90 @@
+diff --git a/hardware/interfaces/audio/aidl/default/include/core-impl/StreamPrimary.h b/hardware/interfaces/audio/aidl/default/include/core-impl/StreamPrimary.h
+--- a/hardware/interfaces/audio/aidl/default/include/core-impl/StreamPrimary.h
++++ b/hardware/interfaces/audio/aidl/default/include/core-impl/StreamPrimary.h
+@@ -50,6 +50,8 @@
+     std::vector<alsa::DeviceProfile> getDeviceProfiles() override;
+     bool isStubStream();
+ 
++    // Kiki virtio-snd: ALSA writes provide backpressure, never fake success.
++    const bool mUseSynchronousAlsa;
+     const bool mIsAsynchronous;
+     int64_t mStartTimeNs = 0;
+     long mFramesSinceStart = 0;
+diff --git a/hardware/interfaces/audio/aidl/default/primary/StreamPrimary.cpp b/hardware/interfaces/audio/aidl/default/primary/StreamPrimary.cpp
+--- a/hardware/interfaces/audio/aidl/default/primary/StreamPrimary.cpp
++++ b/hardware/interfaces/audio/aidl/default/primary/StreamPrimary.cpp
+@@ -26,6 +26,8 @@
+ #include <error/expected_utils.h>
+ 
+ #include "core-impl/StreamPrimary.h"
++#include "../alsa/UtilsAlsa.h"
++#include <cerrno>
+ 
+ using aidl::android::hardware::audio::common::SinkMetadata;
+ using aidl::android::hardware::audio::common::SourceMetadata;
+@@ -41,6 +43,8 @@
+ 
+ StreamPrimary::StreamPrimary(StreamContext* context, const Metadata& metadata)
+     : StreamAlsaMonoPipe(context, metadata, 3 /*readWriteRetries*/),
++      mUseSynchronousAlsa(!mIsInput &&
++                          GetBoolProperty("ro.vendor.audio.kiki.synchronous_pcm", false)),
+       mIsAsynchronous(!!getContext().getAsyncCallback()),
+       mStubDriver(getContext()) {
+     context->startStreamDataProcessor();
+@@ -85,6 +89,12 @@
+     if (isStub) {
+         return mStubDriver.start();
+     }
++    if (mUseSynchronousAlsa) {
++        // No non-blocking MonoPipe writer or independent wall-clock debt.
++        // virtio-snd/SDL consumes PCM at the actual host-device pace.
++        return mAlsaDeviceProxies.empty() ? openDeviceProxies(&mAlsaDeviceProxies)
++                                          : ::android::OK;
++    }
+     RETURN_STATUS_IF_ERROR(StreamAlsaMonoPipe::start());
+     mStartTimeNs = ::android::uptimeNanos();
+     mFramesSinceStart = 0;
+@@ -96,6 +106,43 @@
+                                             size_t* actualFrameCount, int32_t* latencyMs) {
+     if (isStubStreamOnWorker()) {
+         return mStubDriver.transfer(buffer, frameCount, actualFrameCount, latencyMs);
++    }
++    if (mUseSynchronousAlsa) {
++        *actualFrameCount = 0;
++        *latencyMs = 0;
++        if (mAlsaDeviceProxies.empty()) return ::android::NO_INIT;
++        const size_t bytes = frameCount * mFrameSizeBytes;
++        alsa::applyGain(buffer, mGain, bytes, mConfig.value().format, mConfig->channels);
++        unsigned latency = 0;
++        for (size_t i = 0; i < mAlsaDeviceProxies.size(); ++i) {
++            for (unsigned attempt = 0; ; ++attempt) {
++                const int ret = proxy_write_with_retries(mAlsaDeviceProxies[i].get(), buffer,
++                                                         bytes, mReadWriteRetries);
++                if (ret == 0) break;
++                // This pinned tinyalsa returns -1 for ioctl errors, not -errno.
++                // Initial-write XRUN leaves 'prepared' cached true, so merely
++                // repeating proxy_write cannot recover. Reopen this one PCM
++                // before a transient error poisons the persistent AIDL stream.
++                const int error = ret == -1 ? errno : -ret;
++                LOG(WARNING) << __func__ << ": PCM write error=" << error
++                             << " attempt=" << attempt << " detail="
++                             << pcm_get_error(mAlsaDeviceProxies[i].get()->pcm);
++                if (attempt >= 2 || (error != EPIPE && error != EIO &&
++                                     error != EAGAIN && error != ESTRPIPE)) {
++                    return ::android::INVALID_OPERATION;
++                }
++                mAlsaDeviceProxies.clear();
++                if (openDeviceProxies(&mAlsaDeviceProxies) != ::android::OK) {
++                    return ::android::NO_INIT;
++                }
++                LOG(INFO) << __func__ << ": reopened PCM after transient error";
++            }
++            latency = std::max(latency, proxy_get_latency(mAlsaDeviceProxies[i].get()));
++        }
++        *actualFrameCount = frameCount;
++        *latencyMs = std::min(latency,
++                              static_cast<unsigned>(std::numeric_limits<int32_t>::max()));
++        return ::android::OK;
+     }
+     // This is a workaround for the emulator implementation which has a host-side buffer
+     // and is not being able to achieve real-time behavior similar to ADSPs (b/302587331).

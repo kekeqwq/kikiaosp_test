@@ -6,7 +6,7 @@ $(call inherit-product, device/kiki/kikiaosp_test/kikiaosp_test_arm64_phone.mk)
 
 PRODUCT_NAME := kikiaosp_test_arm64_phone_release
 PRODUCT_DEVICE := kikiaosp_test
-PRODUCT_MODEL := KikiAOSP 0.2 Alpha
+PRODUCT_MODEL := KikiAOSP 0.3 Alpha
 PRODUCT_SYSTEM_NAME := kikiaosp_test
 
 # Android 17 gen_build_prop.py emits display/fingerprint defaults with ?=.
@@ -14,6 +14,6 @@ PRODUCT_SYSTEM_NAME := kikiaosp_test
 # to upstream Make/Soong or legacy PRODUCT_BUILD_PROP_OVERRIDES.
 PRODUCT_SYSTEM_PROPERTIES += \
     ro.kikiaosp.build_channel=release \
-    ro.kikiaosp.system_version=0.2.0-alpha \
-    ro.build.display.id=KikiAOSP-0.2-Alpha \
-    ro.build.fingerprint=KikiAOSP/kikiaosp_test/kikiaosp_test:17/CP2A.260605.016/KIKI_0.2.0_ALPHA:userdebug/test-keys
+    ro.kikiaosp.system_version=0.3.0-alpha \
+    ro.build.display.id=KikiAOSP-0.3-Alpha \
+    ro.build.fingerprint=KikiAOSP/kikiaosp_test/kikiaosp_test:17/CP2A.260605.016/KIKI_0.3.0_ALPHA:userdebug/test-keys

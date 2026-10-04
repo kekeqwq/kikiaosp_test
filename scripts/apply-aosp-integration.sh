@@ -69,6 +69,15 @@ else
   echo "KikiAOSP storage-category patch does not apply cleanly" >&2
   exit 1
 fi
+audio_pcm_patch="$REPO_ROOT/patches/aosp-kikiaosp-synchronous-pcm.patch"
+if git -C "$AOSP_ROOT" apply --check "$audio_pcm_patch"; then
+  git -C "$AOSP_ROOT" apply "$audio_pcm_patch"
+elif git -C "$AOSP_ROOT" apply --reverse --check "$audio_pcm_patch"; then
+  echo "Kiki synchronous PCM patch already applied"
+else
+  echo "Kiki synchronous PCM patch does not apply cleanly" >&2
+  exit 1
+fi
 while IFS= read -r -d '' src; do
   rel=${src#"$REPO_ROOT/overlays/"}
   mkdir -p "$AOSP_ROOT/$(dirname "$rel")"
