@@ -68,8 +68,13 @@ def main():
     (a.record / 'kernel-result').symlink_to(kernel_result, target_is_directory=True)
     snapshot = a.record / 'device-source'
     run('bash', snapshot / 'scripts/sync-device-tree.sh', aosp)
-    # Explicit versioned integration delta; all inherited 0.2 patches are
-    # audited by the old packager before cloning, never blindly reapplied.
+    # An audited prior 0.3 candidate may already include the audio delta.
+    # Undo ONLY its exact frozen patch before applying the current snapshot;
+    # do not assume a legacy tinyalsa implementation or force/stack patches.
+    inherited_audio = old / 'device-source/patches/aosp-kikiaosp-synchronous-pcm.patch'
+    if inherited_audio.exists():
+        run('git', '-C', aosp, 'apply', '--reverse', '--check', inherited_audio)
+        run('git', '-C', aosp, 'apply', '--reverse', inherited_audio)
     audio_patch = snapshot / 'patches/aosp-kikiaosp-synchronous-pcm.patch'
     run('git', '-C', aosp, 'apply', '--check', audio_patch)
     run('git', '-C', aosp, 'apply', audio_patch)

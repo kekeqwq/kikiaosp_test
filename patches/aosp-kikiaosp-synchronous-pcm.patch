@@ -61,10 +61,10 @@ diff --git a/hardware/interfaces/audio/aidl/default/primary/StreamPrimary.cpp b/
 +                const int ret = proxy_write_with_retries(mAlsaDeviceProxies[i].get(), buffer,
 +                                                         bytes, mReadWriteRetries);
 +                if (ret == 0) break;
-+                // This pinned tinyalsa returns -1 for ioctl errors, not -errno.
-+                // Initial-write XRUN leaves 'prepared' cached true, so merely
-+                // repeating proxy_write cannot recover. Reopen this one PCM
-+                // before a transient error poisons the persistent AIDL stream.
++                // Pinned libtinyalsav2 reports ioctl EIO as -1, not -errno.
++                // The existing retry wrapper therefore cannot reinitialize it.
++                // Reopen this PCM before the transient failure poisons the
++                // persistent AIDL stream; never pretend data was consumed.
 +                const int error = ret == -1 ? errno : -ret;
 +                LOG(WARNING) << __func__ << ": PCM write error=" << error
 +                             << " attempt=" << attempt << " detail="

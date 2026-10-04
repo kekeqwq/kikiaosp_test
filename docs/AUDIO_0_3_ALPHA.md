@@ -26,11 +26,16 @@ the upstream behavior. This is not a change to volumes or buffer tuning.
 
 ## Transient error recovery
 
-The pinned tinyalsa `pcm_write` returns `-1` (not `-errno`) for ioctl errors.
-An initial-write XRUN can leave its cached `prepared` bit true. Retrying
-`proxy_write_with_retries` alone is insufficient: that wrapper only retries
-`-EIO`/`-EAGAIN`. Immediately propagating such a transient error can poison the
-persistent AIDL stream as ERROR, after which it rejects further bursts.
+The selected library is **libtinyalsav2**, from
+`external/tinyalsa_new/src/pcm.c` (not the coexisting legacy tinyalsa project).
+Its ioctl EIO path returns `-1` (not `-errno`). The existing
+`proxy_write_with_retries` wrapper only retries `-EIO`/`-EAGAIN`, so it does not
+reinitialize this failure. Real EIO was observed and recovered in same-capture
+standby tests. Immediately propagating it instead poisons the persistent AIDL
+stream as ERROR, after which it rejects further bursts. libtinyalsav2 already
+attempts prepare/restart internally for EPIPE/ESTRPIPE; the recovery policy
+also covers a failure propagated out of that operation. A legacy-library
+cached-prepared-bit diagnosis does NOT apply to this selected implementation.
 
 The Kiki path snapshots errno and the PCM diagnostic. EPIPE/EIO/EAGAIN/ESTRPIPE
 can close/reopen this one PCM and retry the current burst, at most twice. It
