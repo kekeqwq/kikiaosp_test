@@ -33,8 +33,12 @@ def main():
   if (aosp/n).read_bytes()!=(snap/n).read_bytes():raise ValueError('Old integrated source changed: '+n)
  check=module(a.pipeline/'scripts/prepare-native-build-inputs.py');check.verify(aosp,old)
  changed=subprocess.check_output(['git','-C',str(a.pipeline),'diff','--name-only',audit['deviceCommit'],dc,'--',rel,'patches']).decode().splitlines()
- allowed=[['device/kiki/kikiaosp_test/ota/src/com/kiki/updater/UpdateService.java'],['device/kiki/kikiaosp_test/BoardConfig.mk','device/kiki/kikiaosp_test/ota/product.mk'],['device/kiki/kikiaosp_test/ota/compatibility_matrix.kiki.xml','device/kiki/kikiaosp_test/ota/manifest.kiki_kernel.xml','device/kiki/kikiaosp_test/ota/product.mk'],['device/kiki/kikiaosp_test/ota/manifest.kiki_kernel.xml'],['device/kiki/kikiaosp_test/ota/AndroidManifest.xml','device/kiki/kikiaosp_test/ota/src/com/kiki/updater/UpdateActivity.java','device/kiki/kikiaosp_test/ota/src/com/kiki/updater/UpdateService.java']]
+ allowed=[['device/kiki/kikiaosp_test/ota/src/com/kiki/updater/UpdateService.java'],['device/kiki/kikiaosp_test/BoardConfig.mk','device/kiki/kikiaosp_test/ota/product.mk'],['device/kiki/kikiaosp_test/ota/compatibility_matrix.kiki.xml','device/kiki/kikiaosp_test/ota/manifest.kiki_kernel.xml','device/kiki/kikiaosp_test/ota/product.mk'],['device/kiki/kikiaosp_test/ota/manifest.kiki_kernel.xml'],['device/kiki/kikiaosp_test/ota/AndroidManifest.xml','device/kiki/kikiaosp_test/ota/src/com/kiki/updater/UpdateActivity.java','device/kiki/kikiaosp_test/ota/src/com/kiki/updater/UpdateService.java'],['device/kiki/kikiaosp_test/ota/product.mk']]
  if changed not in allowed:raise ValueError('In-place retry only permits reviewed updater/English copy, direct-boot or explicit audited non-GKI VINTF fixes')
+ if changed==['device/kiki/kikiaosp_test/ota/product.mk']:
+  branch=subprocess.check_output(['git','-C',str(a.pipeline),'branch','--show-current']).decode().strip()
+  old_product=(snap/changed[0]).read_bytes();new_product=(a.pipeline/changed[0]).read_bytes()
+  if branch!='test/native-ota-sequence2-nonrelease' or old_product.count(b'ro.kiki.ota.sequence=1')!=1 or new_product!=old_product.replace(b'ro.kiki.ota.sequence=1',b'ro.kiki.ota.sequence=2'):raise ValueError('Only explicit NONRELEASE sequence1-to2 system property test is permitted')
  a.new_stage.mkdir();prep=a.new_stage/'preparation';shutil.copytree(old_pre,prep);record=a.new_stage/'build-record';record.mkdir()
  kernel_repo=subprocess.check_output(['git','-C',str(old/'kernel-source'),'rev-parse','--git-common-dir']).decode().strip()
  kernel_source=old/'kernel-source';run('git','-C',a.pipeline,'worktree','add','--detach',record/'device-source',dc);run('git','-C',kernel_source,'worktree','add','--detach',record/'kernel-source',audit['kernelCommit'])
