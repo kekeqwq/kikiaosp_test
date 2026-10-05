@@ -5,6 +5,8 @@ AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS := boot system vendor
 PRODUCT_VIRTUAL_AB_OTA := false
 PRODUCT_USE_DYNAMIC_PARTITIONS := false
+# Direct boot is a single header-v4 kernel/ramdisk; no vendor_boot partition.
+PRODUCT_BUILD_VENDOR_BOOT_IMAGE := false
 PRODUCT_PACKAGES += com.android.hardware.boot bootctl update_engine update_engine_client KikiUpdater KikiOtaCerts
 PRODUCT_COPY_FILES += \
     .kiki-native-inputs/kernel:kernel \
