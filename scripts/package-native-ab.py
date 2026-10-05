@@ -27,6 +27,9 @@ def copy_entry(src,dst,info):
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--pipeline',type=Path,required=True);p.add_argument('--intermediate',type=Path,required=True);p.add_argument('--preparation',type=Path,required=True);p.add_argument('--record',type=Path,required=True);p.add_argument('--target-files',type=Path,required=True);p.add_argument('--host',type=Path,required=True);p.add_argument('--key-base',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--sequence',type=int,required=True);p.add_argument('--version',required=True);p.add_argument('--github-url',default='');a=p.parse_args()
+ for name in ('pipeline','intermediate','preparation','record','target_files','host'):
+  setattr(a,name,getattr(a,name).resolve(strict=True))
+ a.key_base=a.key_base.resolve();a.output=a.output.resolve()
  if a.sequence<=0 or a.output.exists():raise ValueError('Positive target sequence and NEW output required')
  spec=importlib.util.spec_from_file_location('auditor',a.pipeline/'scripts/package-clean-release.py');audit=importlib.util.module_from_spec(spec);spec.loader.exec_module(audit)
  audit.audit_inputs(a.preparation,a.record)
