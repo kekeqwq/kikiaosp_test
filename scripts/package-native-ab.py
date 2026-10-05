@@ -140,7 +140,9 @@ def main():
     dst.write(stage/(Path(info.filename).stem+'.img'),info.filename,compress_type=zipfile.ZIP_DEFLATED)
    else:copy_entry(src,dst,info)
   if 'IMAGES/boot.img' not in names:dst.write(stage/'boot.img','IMAGES/boot.img',compress_type=zipfile.ZIP_DEFLATED)
- env=dict(os.environ,PATH=str(a.host/'bin')+':/usr/bin:/bin',LD_LIBRARY_PATH=str(a.host/'lib64'))
+ jdk=Path(json.loads((a.record/'build-audit.json').read_text())['aosp'])/'prebuilts/jdk/jdk21/linux-x86'
+ if not (jdk/'bin/java').is_file():raise ValueError('Matching pinned AOSP JDK missing')
+ env=dict(os.environ,PATH=str(a.host/'bin')+':'+str(jdk/'bin')+':/usr/bin:/bin',JAVA_HOME=str(jdk),LD_LIBRARY_PATH=str(a.host/'lib64'))
  native=a.output/'android-native-full.ota.zip'
  adapted_tool=a.output/'physical-ab-ota-tool.pyz';tool_adaptation=physical_ab_tool(a.host,a.record,adapted_tool)
  run([adapted_tool,'-p',a.host,'--no_signing','--skip_postinstall','--max_threads=8','-k',a.key_base,target,native],env)
@@ -148,13 +150,14 @@ def main():
   unpack(n,'payload.bin',stage/'payload.bin');properties=n.read('payload_properties.txt');metadata=n.read('META-INF/com/android/metadata')
  with (stage/'payload.bin').open('rb') as f:
   if f.read(4)!=b'CrAU':raise ValueError('Not an Android payload')
+ run([a.host/'bin/delta_generator','--in_file='+str(stage/'payload.bin'),'--public_key='+str(a.record/'device-source/device/kiki/kikiaosp_test/ota/update-payload-key.pub.pem')],env)
  cat={'kind':'org.kiki.ota.full','format':1,'device':'kikiaosp_test','layout':'gpt-ab-v1','android_major':17,'sequence':a.sequence,'version':a.version,'payload_sha256':digest(stage/'payload.bin'),'payload_bytes':(stage/'payload.bin').stat().st_size,'ota_url':a.github_url}
  (a.output/'KikiAOSP-ota.json').write_bytes(raw(cat));signature=a.output/'KikiAOSP-ota.sig';run(['openssl','dgst','-sha256','-sign',a.key_base.with_suffix('.pem'),'-out',signature,a.output/'KikiAOSP-ota.json'])
  if signature.stat().st_size!=256:raise ValueError('Unexpected publisher RSA signature size')
  wrapper=a.output/'KikiAOSP-0.3.0-alpha-full.ota.zip'
  with zipfile.ZipFile(wrapper,'x',compression=zipfile.ZIP_STORED) as z:
   z.write(stage/'payload.bin','payload.bin');z.writestr('payload_properties.txt',properties);z.writestr('META-INF/com/android/metadata',metadata);z.writestr('kiki-ota.json',raw(cat));z.write(signature,'kiki-ota.sig')
- proof={'kind':'org.kiki.native-ota-build-proof','sequence':a.sequence,'nonrelease':not a.github_url,'sourceIntermediateSha256':digest(a.intermediate),'originalTargetFilesSha256':digest(a.target_files),'adaptedTargetFilesSha256':digest(target),'deviceBuiltCommit':lock['device']['commit'],'contractPipelineCommit':lock['contract']['revision'],'partitionRoles':list(CAP),'physicalAbHostToolAdaptation':tool_adaptation,'filesystemImageAdaptation':image_adaptation,'userdataTouched':False,'baselineSha256':digest(baseline),'otaSha256':digest(wrapper),'payloadSha256':cat['payload_sha256'],'tools':{name:digest(a.host/'bin'/name) for name in ('ota_from_target_files','brillo_update_payload','delta_generator')}}
+ proof={'kind':'org.kiki.native-ota-build-proof','sequence':a.sequence,'nonrelease':not a.github_url,'sourceIntermediateSha256':digest(a.intermediate),'originalTargetFilesSha256':digest(a.target_files),'adaptedTargetFilesSha256':digest(target),'deviceBuiltCommit':lock['device']['commit'],'contractPipelineCommit':lock['contract']['revision'],'partitionRoles':list(CAP),'physicalAbHostToolAdaptation':tool_adaptation,'filesystemImageAdaptation':image_adaptation,'kernelInputGraph':json.loads((a.intermediate.parent/'package-audit.json').read_text())['kernelGraph'],'matchingJavaSha256':digest(jdk/'bin/java'),'userdataTouched':False,'baselineSha256':digest(baseline),'otaSha256':digest(wrapper),'payloadSha256':cat['payload_sha256'],'tools':{name:digest(a.host/'bin'/name) for name in ('ota_from_target_files','brillo_update_payload','delta_generator')}}
  (a.output/'native-ota-proof.json').write_bytes(raw(proof));print(json.dumps(proof,indent=2),flush=True)
 
 if __name__=='__main__':main()
