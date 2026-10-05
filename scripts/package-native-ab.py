@@ -143,7 +143,7 @@ def main():
  env=dict(os.environ,PATH=str(a.host/'bin')+':/usr/bin:/bin',LD_LIBRARY_PATH=str(a.host/'lib64'))
  native=a.output/'android-native-full.ota.zip'
  adapted_tool=a.output/'physical-ab-ota-tool.pyz';tool_adaptation=physical_ab_tool(a.host,a.record,adapted_tool)
- run([adapted_tool,'--no_signing','--skip_postinstall','-k',a.key_base,target,native],env)
+ run([adapted_tool,'-p',a.host,'--no_signing','--skip_postinstall','--max_threads=8','-k',a.key_base,target,native],env)
  with zipfile.ZipFile(native) as n:
   unpack(n,'payload.bin',stage/'payload.bin');properties=n.read('payload_properties.txt');metadata=n.read('META-INF/com/android/metadata')
  with (stage/'payload.bin').open('rb') as f:
