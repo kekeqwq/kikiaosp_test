@@ -99,17 +99,30 @@ def main():
     if not kernel_source.is_dir() or not str(kernel_source).startswith('/nix/store/'):
         raise ValueError('Expected the actual recorded immutable Nix kernel source')
     print('Archiving the exact Linux source consumed by Nix (recipe patches are in kernel-recipe.tar).', flush=True)
-    subprocess.run(['tar', '-czf', str(output / 'linux-7.3-rc5-source.tar.gz'),
-                    '-C', str(kernel_source), '.'], check=True)
-    config = args.build_audit.parent / 'kernel-result/boot/config'
-    (output / 'linux-built.config').write_bytes(config.read_bytes())
+    source_version = lock['kernel']['sourceVersion']
+    if not re.fullmatch(r'7\.3-rc[56]', source_version):
+        raise ValueError('Unexpected pinned kernel source version')
+    source_archive = output / ('linux-' + source_version + '-source.tar.gz')
+    subprocess.run(['tar', '-czf', str(source_archive), '-C', str(kernel_source), '.'], check=True)
+    # Extract ACTUAL final config embedded in the kernel being shipped, not
+    # the declarative input or a possibly GC-rebuilt mutable Nix output path.
+    image = args.build_audit.parent / 'kernel-result/boot/kernel'
+    if sha(image) != lock['kernel']['imageSha256']:
+        raise ValueError('Actual shipped kernel image changed')
+    actual_config = subprocess.check_output(['bash', str(kernel_source / 'scripts/extract-ikconfig'), str(image)])
+    if b'CONFIG_ARM64_4K_PAGES=y' not in actual_config or b'CONFIG_SND_VIRTIO=y' not in actual_config:
+        raise ValueError('Could not extract the actual required built kernel configuration')
+    (output / 'linux-built.config').write_bytes(actual_config)
+    (output / 'linux-declared.config').write_bytes((args.build_audit.parent / 'kernel-result/boot/config').read_bytes())
     (output / 'aosp-pinned-manifest.xml').write_text(manifest, encoding='utf-8')
     (output / 'source-lock.json').write_text(json.dumps(lock, indent=2) + '\n')
     (output / 'aosp-notices.txt').write_text(notices, encoding='utf-8')
     provenance = {'version': '0.3.0-alpha', 'packageSha256': sha(args.package),
                   'builtDeviceCommit': build['deviceCommit'], 'kernelCommit': build['kernelCommit'],
                   'noticeIdentifiedCopyleftComponents': sorted(labels), 'projects': source_records,
-                  'kernelSourceArchiveSha256': sha(output / 'linux-7.3-rc5-source.tar.gz')}
+                  'kernelSourceArchive': source_archive.name, 'kernelSourceArchiveSha256': sha(source_archive),
+                  'kernelBuiltConfigSha256': hashlib.sha256(actual_config).hexdigest(),
+                  'kernelInputGraph': audit['kernelGraph']}
     (output / 'source-provenance.json').write_text(json.dumps(provenance, indent=2) + '\n')
     (output / 'BUILDING.txt').write_text(
         'KikiAOSP 0.3 Alpha corresponding-source materials\n\n'
@@ -126,8 +139,10 @@ def main():
         'Keep all original per-file licenses/notices. LGPL shared libraries may be rebuilt/replaced\n'
         'by building a new system package; no locked bootloader or modified-library prohibition is used.\n'
         'This source kit contains no userdata/disk, credentials, developer logs or build output images.\n'
-        'The public producer tag also records later packaging/documentation fixes; actual built device\n'
-        'identity above, not that tag HEAD, is authoritative for the shipped system.\n')
+        'This is a NONRELEASE native OTA candidate; no public tag or Release is claimed.\n'
+        'Actual built device identity above, not a later pipeline HEAD, describes the system.\n'
+        'linux-built.config was extracted from the exact shipped kernel; linux-declared.config is the recipe input.\n'
+        'Any historical retained-kernel / Nix rebuild byte difference is recorded explicitly in source-provenance.json.\n')
     destination = output.with_name('KikiAOSP-0.3.0-alpha-source-kit.tar.gz')
     if destination.exists():
         raise ValueError('Never replace an existing source kit')
