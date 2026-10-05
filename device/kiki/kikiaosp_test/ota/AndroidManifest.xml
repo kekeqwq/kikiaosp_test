@@ -1,0 +1,19 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.kiki.updater" android:sharedUserId="android.uid.system">
+ <uses-permission android:name="android.permission.INTERNET"/>
+ <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+ <uses-permission android:name="android.permission.REBOOT"/>
+ <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+ <application android:label="Kiki 系统更新" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="false" android:allowBackup="false">
+  <activity android:name=".UpdateActivity" android:exported="true">
+   <intent-filter><action android:name="android.settings.SYSTEM_UPDATE_SETTINGS"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>
+  </activity>
+  <service android:name=".UpdateService" android:exported="false" android:foregroundServiceType="specialUse">
+   <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="User-initiated signed system OTA installation"/>
+  </service>
+  <receiver android:name=".ControlReceiver" android:exported="true" android:permission="android.permission.DUMP">
+   <intent-filter><action android:name="com.kiki.updater.CONTROL"/></intent-filter>
+  </receiver>
+ </application>
+</manifest>

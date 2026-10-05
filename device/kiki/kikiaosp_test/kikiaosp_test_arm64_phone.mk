@@ -218,6 +218,8 @@ PRODUCT_COPY_FILES += \
 # Dynamic image sizing and RRO enforcement are required by the upstream core
 # product layers and the fixed-orientation device overlay.
 PRODUCT_USE_DYNAMIC_PARTITION_SIZE := true
+$(call inherit-product, device/kiki/kikiaosp_test/ota/product.mk)
+
 # This target mounts raw system/vendor images, not a super partition. Keep
 # product and system_ext content inside system, matching AOSP's GSI layout.
 PRODUCT_BUILD_PRODUCT_IMAGE := false
