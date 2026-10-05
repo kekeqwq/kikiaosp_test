@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0
+     Device-specific non-GKI QEMU kernel contract. NOT an Android LTS/GKI
+     certification or a claim that upstream 7.3 belongs to an official FCM.
+     Keep the actual 4-KiB rc6 kernel/audio unchanged; checkvintf still verifies
+     all HAL/sepolicy requirements and these required built-in drivers. -->
+<compatibility-matrix version="1.0" type="framework">
+    <kernel version="7.3.0" level="202604">
+        <config><key>CONFIG_ARM64</key><value type="tristate">y</value></config>
+        <config><key>CONFIG_ARM64_4K_PAGES</key><value type="tristate">y</value></config>
+        <config><key>CONFIG_EROFS_FS</key><value type="tristate">y</value></config>
+        <config><key>CONFIG_F2FS_FS</key><value type="tristate">y</value></config>
+        <config><key>CONFIG_EXT4_FS</key><value type="tristate">y</value></config>
+        <config><key>CONFIG_VIRTIO_BLK</key><value type="tristate">y</value></config>
+        <config><key>CONFIG_VIRTIO_PCI</key><value type="tristate">y</value></config>
+        <config><key>CONFIG_VIRTIO_NET</key><value type="tristate">y</value></config>
+        <config><key>CONFIG_DRM_VIRTIO_GPU</key><value type="tristate">y</value></config>
+        <config><key>CONFIG_SND_VIRTIO</key><value type="tristate">y</value></config>
+        <config><key>CONFIG_UNIX</key><value type="tristate">y</value></config>
+        <config><key>CONFIG_INET</key><value type="tristate">y</value></config>
+        <config><key>CONFIG_NETFILTER</key><value type="tristate">y</value></config>
+        <config><key>CONFIG_ANDROID_BINDER_IPC</key><value type="tristate">y</value></config>
+    </kernel>
+</compatibility-matrix>

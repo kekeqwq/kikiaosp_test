@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # The native OTA trust store contains ONLY our publisher certificate.
 # Keep the existing unrelated APK/platform signing identity unchanged.
+DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE += device/kiki/kikiaosp_test/ota/compatibility_matrix.kiki.xml
+DEVICE_MANIFEST_FILE += device/kiki/kikiaosp_test/ota/manifest.kiki_kernel.xml
 AB_OTA_UPDATER := true
 AB_OTA_PARTITIONS := boot system vendor
 PRODUCT_VIRTUAL_AB_OTA := false
