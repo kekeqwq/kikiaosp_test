@@ -50,12 +50,19 @@ def physical_ab_tool(host,record,dest):
  if content.count(old)!=1:raise ValueError('Physical A/B host-tool repair no longer matches reviewed upstream')
  patched=content.replace(old,new)
  tool=host/'bin/ota_from_target_files'
- with zipfile.ZipFile(tool) as src,zipfile.ZipFile(dest,'x',compression=zipfile.ZIP_DEFLATED) as dst:
+ with zipfile.ZipFile(tool) as packed:
+  prefix_size=min(info.header_offset for info in packed.infolist())
+ with tool.open('rb') as i,dest.open('xb') as o:
+  prefix=i.read(prefix_size)
+  if prefix[:4]!=b'\x7fELF':raise ValueError('Expected matching embedded Soong Python interpreter')
+  o.write(prefix)
+ with zipfile.ZipFile(tool) as src,zipfile.ZipFile(dest,'a',compression=zipfile.ZIP_DEFLATED) as dst:
   if 'ota_from_target_files.pyc' not in src.namelist() or 'ota_from_target_files.py' in src.namelist():raise ValueError('Unexpected Soong packaged Python tool')
   for info in src.infolist():
    if info.filename!='ota_from_target_files.pyc':copy_entry(src,dst,info)
   dst.writestr('ota_from_target_files.py',patched)
- return {'upstreamBuildMakeCommit':commit,'sourceSha256':hashlib.sha256(content).hexdigest(),'patchedSourceSha256':hashlib.sha256(patched).hexdigest(),'matchingBuiltToolSha256':digest(tool),'adaptedToolSha256':digest(dest),'repair':'gate ublk dynamic-metadata edit on use_dynamic_partitions=true; no system or payload signature bypass'}
+ dest.chmod(0o755)
+ return {'embeddedInterpreterPrefixSha256':hashlib.sha256(prefix).hexdigest(),'upstreamBuildMakeCommit':commit,'sourceSha256':hashlib.sha256(content).hexdigest(),'patchedSourceSha256':hashlib.sha256(patched).hexdigest(),'matchingBuiltToolSha256':digest(tool),'adaptedToolSha256':digest(dest),'repair':'gate ublk dynamic-metadata edit on use_dynamic_partitions=true; no system or payload signature bypass'}
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--pipeline',type=Path,required=True);p.add_argument('--intermediate',type=Path,required=True);p.add_argument('--preparation',type=Path,required=True);p.add_argument('--record',type=Path,required=True);p.add_argument('--target-files',type=Path,required=True);p.add_argument('--host',type=Path,required=True);p.add_argument('--key-base',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--sequence',type=int,required=True);p.add_argument('--version',required=True);p.add_argument('--github-url',default='');a=p.parse_args()
@@ -136,7 +143,7 @@ def main():
  env=dict(os.environ,PATH=str(a.host/'bin')+':/usr/bin:/bin',LD_LIBRARY_PATH=str(a.host/'lib64'))
  native=a.output/'android-native-full.ota.zip'
  adapted_tool=a.output/'physical-ab-ota-tool.pyz';tool_adaptation=physical_ab_tool(a.host,a.record,adapted_tool)
- run(['/usr/bin/python',adapted_tool,'--no_signing','--skip_postinstall','-k',a.key_base,target,native],env)
+ run([adapted_tool,'--no_signing','--skip_postinstall','-k',a.key_base,target,native],env)
  with zipfile.ZipFile(native) as n:
   unpack(n,'payload.bin',stage/'payload.bin');properties=n.read('payload_properties.txt');metadata=n.read('META-INF/com/android/metadata')
  with (stage/'payload.bin').open('rb') as f:
