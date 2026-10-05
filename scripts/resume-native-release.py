@@ -38,8 +38,8 @@ def main():
  if changed==['device/kiki/kikiaosp_test/ota/product.mk']:
   branch=subprocess.check_output(['git','-C',str(a.pipeline),'branch','--show-current']).decode().strip()
   old_product=(snap/changed[0]).read_bytes();new_product=(a.pipeline/changed[0]).read_bytes()
-  source_value,target_value=(b'ro.kiki.ota.sequence=1',b'ro.kiki.ota.sequence=2') if branch=='test/native-ota-sequence2-nonrelease' else (b'ro.kiki.ota.sequence=2',b'ro.kiki.ota.sequence=3') if branch=='test/native-ota-sequence3-nonrelease' else (b'',b'')
-  if not source_value or old_product.count(source_value)!=1 or new_product!=old_product.replace(source_value,target_value):raise ValueError('Only explicitly bounded NONRELEASE sequence1-to2 or sequence2-to3 test system property changes are permitted')
+  source_value,target_value=(b'ro.kiki.ota.sequence=1',b'ro.kiki.ota.sequence=2') if branch=='test/native-ota-sequence2-nonrelease' else (b'ro.kiki.ota.sequence=2',b'ro.kiki.ota.sequence=3') if branch=='test/native-ota-sequence3-nonrelease' else (b'ro.kiki.ota.sequence=3',b'ro.kiki.ota.sequence=4') if branch=='test/native-ota-sequence4-nonrelease' else (b'',b'')
+  if not source_value or old_product.count(source_value)!=1 or new_product!=old_product.replace(source_value,target_value):raise ValueError('Only explicitly bounded NONRELEASE sequence1-to2, sequence2-to3 or sequence3-to4 test system property changes are permitted')
  a.new_stage.mkdir();prep=a.new_stage/'preparation';shutil.copytree(old_pre,prep);record=a.new_stage/'build-record';record.mkdir()
  kernel_repo=subprocess.check_output(['git','-C',str(old/'kernel-source'),'rev-parse','--git-common-dir']).decode().strip()
  kernel_source=old/'kernel-source';run('git','-C',a.pipeline,'worktree','add','--detach',record/'device-source',dc);run('git','-C',kernel_source,'worktree','add','--detach',record/'kernel-source',audit['kernelCommit'])
