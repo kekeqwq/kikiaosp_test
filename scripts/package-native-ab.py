@@ -36,6 +36,27 @@ def filesystem_tree(root):
   out[p.relative_to(root).as_posix()]=(mode,value)
  return out
 
+def physical_ab_tool(host,record,dest):
+ # Android17 release tool unconditionally edits nonexistent dynamic metadata
+ # when ublk is unsupported, including physical A/B. Bound a HOST-ONLY fix
+ # to the pinned clean build/make source; keep the compiled tool dependencies.
+ source=Path(json.loads((record/'build-audit.json').read_text())['aosp'])/'build/make'
+ path='tools/releasetools/ota_from_target_files.py'
+ commit=subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD']).decode().strip()
+ content=subprocess.check_output(['git','-C',str(source),'show','HEAD:'+path])
+ if content!=(source/path).read_bytes():raise ValueError('OTA tool source not pinned clean upstream')
+ old=b'  if OPTIONS.disable_ublk:\n    logger.info("Disabling UBLK as requested")'
+ new=b'  if OPTIONS.disable_ublk and OPTIONS.info_dict.get("use_dynamic_partitions") == "true":\n    logger.info("Disabling UBLK as requested")'
+ if content.count(old)!=1:raise ValueError('Physical A/B host-tool repair no longer matches reviewed upstream')
+ patched=content.replace(old,new)
+ tool=host/'bin/ota_from_target_files'
+ with zipfile.ZipFile(tool) as src,zipfile.ZipFile(dest,'x',compression=zipfile.ZIP_DEFLATED) as dst:
+  if 'ota_from_target_files.pyc' not in src.namelist() or 'ota_from_target_files.py' in src.namelist():raise ValueError('Unexpected Soong packaged Python tool')
+  for info in src.infolist():
+   if info.filename!='ota_from_target_files.pyc':copy_entry(src,dst,info)
+  dst.writestr('ota_from_target_files.py',patched)
+ return {'upstreamBuildMakeCommit':commit,'sourceSha256':hashlib.sha256(content).hexdigest(),'patchedSourceSha256':hashlib.sha256(patched).hexdigest(),'matchingBuiltToolSha256':digest(tool),'adaptedToolSha256':digest(dest),'repair':'gate ublk dynamic-metadata edit on use_dynamic_partitions=true; no system or payload signature bypass'}
+
 def main():
  p=argparse.ArgumentParser();p.add_argument('--pipeline',type=Path,required=True);p.add_argument('--intermediate',type=Path,required=True);p.add_argument('--preparation',type=Path,required=True);p.add_argument('--record',type=Path,required=True);p.add_argument('--target-files',type=Path,required=True);p.add_argument('--host',type=Path,required=True);p.add_argument('--key-base',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--sequence',type=int,required=True);p.add_argument('--version',required=True);p.add_argument('--github-url',default='');a=p.parse_args()
  for name in ('pipeline','intermediate','preparation','record','target_files','host'):
@@ -114,7 +135,8 @@ def main():
   if 'IMAGES/boot.img' not in names:dst.write(stage/'boot.img','IMAGES/boot.img',compress_type=zipfile.ZIP_DEFLATED)
  env=dict(os.environ,PATH=str(a.host/'bin')+':/usr/bin:/bin',LD_LIBRARY_PATH=str(a.host/'lib64'))
  native=a.output/'android-native-full.ota.zip'
- run([a.host/'bin/ota_from_target_files','--no_signing','--skip_postinstall','-k',a.key_base,target,native],env)
+ adapted_tool=a.output/'physical-ab-ota-tool.pyz';tool_adaptation=physical_ab_tool(a.host,a.record,adapted_tool)
+ run(['/usr/bin/python',adapted_tool,'--no_signing','--skip_postinstall','-k',a.key_base,target,native],env)
  with zipfile.ZipFile(native) as n:
   unpack(n,'payload.bin',stage/'payload.bin');properties=n.read('payload_properties.txt');metadata=n.read('META-INF/com/android/metadata')
  with (stage/'payload.bin').open('rb') as f:
@@ -125,7 +147,7 @@ def main():
  wrapper=a.output/'KikiAOSP-0.3.0-alpha-full.ota.zip'
  with zipfile.ZipFile(wrapper,'x',compression=zipfile.ZIP_STORED) as z:
   z.write(stage/'payload.bin','payload.bin');z.writestr('payload_properties.txt',properties);z.writestr('META-INF/com/android/metadata',metadata);z.writestr('kiki-ota.json',raw(cat));z.write(signature,'kiki-ota.sig')
- proof={'kind':'org.kiki.native-ota-build-proof','sequence':a.sequence,'nonrelease':not a.github_url,'sourceIntermediateSha256':digest(a.intermediate),'originalTargetFilesSha256':digest(a.target_files),'adaptedTargetFilesSha256':digest(target),'deviceBuiltCommit':lock['device']['commit'],'contractPipelineCommit':lock['contract']['revision'],'partitionRoles':list(CAP),'filesystemImageAdaptation':image_adaptation,'userdataTouched':False,'baselineSha256':digest(baseline),'otaSha256':digest(wrapper),'payloadSha256':cat['payload_sha256'],'tools':{name:digest(a.host/'bin'/name) for name in ('ota_from_target_files','brillo_update_payload','delta_generator')}}
+ proof={'kind':'org.kiki.native-ota-build-proof','sequence':a.sequence,'nonrelease':not a.github_url,'sourceIntermediateSha256':digest(a.intermediate),'originalTargetFilesSha256':digest(a.target_files),'adaptedTargetFilesSha256':digest(target),'deviceBuiltCommit':lock['device']['commit'],'contractPipelineCommit':lock['contract']['revision'],'partitionRoles':list(CAP),'physicalAbHostToolAdaptation':tool_adaptation,'filesystemImageAdaptation':image_adaptation,'userdataTouched':False,'baselineSha256':digest(baseline),'otaSha256':digest(wrapper),'payloadSha256':cat['payload_sha256'],'tools':{name:digest(a.host/'bin'/name) for name in ('ota_from_target_files','brillo_update_payload','delta_generator')}}
  (a.output/'native-ota-proof.json').write_bytes(raw(proof));print(json.dumps(proof,indent=2),flush=True)
 
 if __name__=='__main__':main()
