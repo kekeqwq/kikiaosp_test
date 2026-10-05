@@ -1,4 +1,12 @@
-# KikiAOSP 0.1 Alpha release policy
+# Release policy: 0.3 authorization and historical0.1 rules
+
+## Current0.3 decision
+
+The user expressly authorized main/tag/0.3 Alpha publication using completed engineering tests, with matching source/license materials and uploaded-download hash verification. Real user-side public online OTA acceptance waits for a future0.4 update; do not claim it complete. [0.3 release scope](docs/RELEASE_0_3_ALPHA.md).
+
+0.3 supersedes the old format-1 / new-instance-per-version route: NEW physical A/B format-2 baseline, then authenticated native FULL updates of that SAME instance with shared userdata retained. No0.2 conversion/data wipe. The audited release-only source/output was incrementally resumed, not described as an empty full rebuild. Preserve the exact historically audited rc6 kernel with its non-byte-reproducible Nix restore receipt. Signed public catalog promotion may change URL/version/wrapper only, never native payload/baseline bytes. Record built device, source-collection and publication commits separately. Agent still does not execute setup.exe or alter the formal0.2 instance. Published old tags/assets stay immutable.
+
+## Historical0.1 policy (not the current OTA layout)
 
 Status:0.1 Alpha mainline/publication authorized by the user on2026-10-01 after successful instance creation. Independent pinned-source/output construction produced the validated format-1 ZIP; native Windows32/200-GiB instances booted and persisted data through normal reboot. System bytes/contract remain unchanged. Actual built device/kernel commits are recorded separately from later packaging/documentation tag HEADs in [the release record](docs/RELEASE_0_1_ALPHA.md). Final setup is compiled, not executed/installed by the agent. Publish the two prereleases only with source/license materials and download-hash verification; do not claim the former Dev/concurrency matrix passed.
 

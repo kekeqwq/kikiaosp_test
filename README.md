@@ -1,5 +1,11 @@
 # KikiAOSP Test
 
+## 0.3 Alpha: native FULL OTA
+
+The user authorized publication from completed engineering tests. User-side real online OTA acceptance is deferred until a future 0.4 update; it is NOT claimed passed. [Release details](docs/RELEASE_0_3_ALPHA.md).
+
+The format-2 physical A/B baseline is Android17 / Linux7.3-rc6, publisher sequence4. Settings and CLI use KikiUpdater / update_engine, preserving shared userdata. Create NEW0.3 storage; no0.2 disk migration. QEMU is unchanged from the audited0.2 five-patch native runtime. Historical0.1/0.2 format-1 guidance below does not define native0.3 updates.
+
 面向 Windows ARM64 QEMU/WHPX 的 Android 17 测试设备。设备身份 `kikiaosp_test`，系统身份 `KikiAOSP`，产品目标 **`kikiaosp_test_arm64_phone-cp2a-userdebug`**；不是 Cuttlefish 手机产品。
 
 本仓库负责 AOSP 设备树、集成补丁、精确 manifest、审计和镜像构建，并维护系统安装包标准及干净打包/发版流程。[0.1 Alpha 系统包](https://github.com/kekeqwq/kikiaosp_test/releases/tag/v0.1.0-alpha) 与 [KikiEmu 安装器](https://github.com/kekeqwq/KikiEmu/releases/tag/v0.1.0-alpha) 分别发布；终端用户不需要克隆这两个仓库。[kikiaosp_kernel](https://github.com/kekeqwq/kikiaosp_kernel) 负责内核；[KikiEmu](https://github.com/kekeqwq/KikiEmu) 负责 Windows ARM64 QEMU/相机桥接的源码构建、开发资产收集校验、本地测试，以及终端用户的配置管理器/系统安装器/桌面启动入口。Linux 开发机不承担最终 QEMU 测试。
