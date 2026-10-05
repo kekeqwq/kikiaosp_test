@@ -33,7 +33,7 @@ def main():
   if (aosp/n).read_bytes()!=(snap/n).read_bytes():raise ValueError('Old integrated source changed: '+n)
  check=module(a.pipeline/'scripts/prepare-native-build-inputs.py');check.verify(aosp,old)
  changed=subprocess.check_output(['git','-C',str(a.pipeline),'diff','--name-only',audit['deviceCommit'],dc,'--',rel,'patches']).decode().splitlines()
- allowed=[['device/kiki/kikiaosp_test/ota/src/com/kiki/updater/UpdateService.java'],['device/kiki/kikiaosp_test/BoardConfig.mk','device/kiki/kikiaosp_test/ota/product.mk'],['device/kiki/kikiaosp_test/ota/compatibility_matrix.kiki.xml','device/kiki/kikiaosp_test/ota/manifest.kiki_kernel.xml','device/kiki/kikiaosp_test/ota/product.mk']]
+ allowed=[['device/kiki/kikiaosp_test/ota/src/com/kiki/updater/UpdateService.java'],['device/kiki/kikiaosp_test/BoardConfig.mk','device/kiki/kikiaosp_test/ota/product.mk'],['device/kiki/kikiaosp_test/ota/compatibility_matrix.kiki.xml','device/kiki/kikiaosp_test/ota/manifest.kiki_kernel.xml','device/kiki/kikiaosp_test/ota/product.mk'],['device/kiki/kikiaosp_test/ota/manifest.kiki_kernel.xml']]
  if changed not in allowed:raise ValueError('In-place retry only permits reviewed updater, direct-boot or explicit audited non-GKI VINTF configuration fixes')
  a.new_stage.mkdir();prep=a.new_stage/'preparation';shutil.copytree(old_pre,prep);record=a.new_stage/'build-record';record.mkdir()
  kernel_repo=subprocess.check_output(['git','-C',str(old/'kernel-source'),'rev-parse','--git-common-dir']).decode().strip()

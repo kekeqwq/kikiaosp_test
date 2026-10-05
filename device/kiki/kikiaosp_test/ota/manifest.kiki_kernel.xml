@@ -3,5 +3,6 @@
      Explicit kernel contract selection for Kiki's non-GKI 7.3 QEMU kernel.
      This is NOT an official 7.3-to-FCM mapping or GKI/VTS certification. -->
 <manifest version="1.0" type="device" target-level="202604">
-    <kernel target-level="202604"/>
+    <!-- Modern assemble_vintf derives kernel level from shipping target-level;
+         an explicit kernel target-level is forbidden for this FCM. -->
 </manifest>
