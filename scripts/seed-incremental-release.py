@@ -85,6 +85,13 @@ def main():
     no_wipe = snapshot / 'patches/aosp-kikiaosp-ota-no-userdata-wipe.patch'
     run('git', '-C', aosp, 'apply', '--check', no_wipe)
     run('git', '-C', aosp, 'apply', no_wipe)
+    inherited_trust = old / 'device-source/patches/aosp-kikiaosp-native-ota-trust.patch'
+    if inherited_trust.exists():
+        run('git', '-C', aosp, 'apply', '--reverse', '--check', inherited_trust)
+        run('git', '-C', aosp, 'apply', '--reverse', inherited_trust)
+    trust = snapshot / 'patches/aosp-kikiaosp-native-ota-trust.patch'
+    run('git', '-C', aosp, 'apply', '--check', trust)
+    run('git', '-C', aosp, 'apply', trust)
     run('bash', snapshot / 'scripts/audit-aosp-integration.sh', aosp)
     value = dict(audit, deviceCommit=dc, kernelCommit=kc, aosp=str(aosp), output=str(out),
                  systemVersion='0.3.0-alpha', phase='building-aosp', sharedInputs=mode,

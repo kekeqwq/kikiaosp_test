@@ -1,12 +1,11 @@
 package { default_applicable_licenses: ["kiki_ota_license"], }
 license { name: "kiki_ota_license", visibility: [":__subpackages__"], license_kinds: ["SPDX-license-identifier-Apache-2.0"], license_text: ["NOTICE"], }
-// Override the standard keystore module, NOT the signing of unrelated APKs.
+// Dedicated native-engine trust store; unrelated APK/recovery signing stays unchanged.
 prebuilt_etc {
     name: "KikiOtaCerts",
     src: "otacerts.zip",
-    filename: "otacerts.zip",
-    relative_install_path: "security",
-    overrides: ["otacerts"],
+    filename: "kiki-otacerts.zip",
+    relative_install_path: "update_engine",
 }
 android_app {
     name: "KikiUpdater",

@@ -69,6 +69,14 @@ else
   echo "KikiAOSP storage-category patch does not apply cleanly" >&2
   exit 1
 fi
+native_trust="$REPO_ROOT/patches/aosp-kikiaosp-native-ota-trust.patch"
+if git -C "$AOSP_ROOT" apply --check "$native_trust"; then
+  git -C "$AOSP_ROOT" apply "$native_trust"
+elif git -C "$AOSP_ROOT" apply --reverse --check "$native_trust"; then
+  echo "Native publisher trust patch already applied"
+else
+  echo "Native publisher trust patch does not apply cleanly" >&2; exit 1
+fi
 no_wipe_patch="$REPO_ROOT/patches/aosp-kikiaosp-ota-no-userdata-wipe.patch"
 if git -C "$AOSP_ROOT" apply --check "$no_wipe_patch"; then
   git -C "$AOSP_ROOT" apply "$no_wipe_patch"

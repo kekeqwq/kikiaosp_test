@@ -1,0 +1,29 @@
+diff --git a/system/update_engine/aosp/platform_constants_android.cc b/system/update_engine/aosp/platform_constants_android.cc
+--- a/system/update_engine/aosp/platform_constants_android.cc
++++ b/system/update_engine/aosp/platform_constants_android.cc
+@@ -26,7 +26,7 @@
+ const char kOmahaUpdaterID[] = "Brillo";
+ const char kOmahaPlatformName[] = "Brillo";
+ const char kUpdatePayloadPublicKeyPath[] = "";
+-const char kUpdateCertificatesPath[] = "/system/etc/security/otacerts.zip";
++const char kUpdateCertificatesPath[] = "/system/etc/update_engine/kiki-otacerts.zip";
+ const char kCACertificatesPath[] = "/system/etc/security/cacerts";
+ // No deadline file API support on Android.
+ const char kOmahaResponseDeadlineFile[] = "";
+diff --git a/system/update_engine/payload_consumer/delta_performer.cc b/system/update_engine/payload_consumer/delta_performer.cc
+--- a/system/update_engine/payload_consumer/delta_performer.cc
++++ b/system/update_engine/payload_consumer/delta_performer.cc
+@@ -1130,6 +1130,13 @@
+ 
+ std::pair<std::unique_ptr<PayloadVerifier>, bool>
+ DeltaPerformer::CreatePayloadVerifier() {
++  // Kiki provisions its publisher-only keystore independently of unrelated APK
++  // test/recovery keys. Missing provisioning MUST NOT allow unsigned payloads.
++  if (update_certificates_path_ == "/system/etc/update_engine/kiki-otacerts.zip" &&
++      !utils::FileExists(update_certificates_path_.c_str())) {
++    LOG(ERROR) << "Required Kiki publisher keystore is missing";
++    return {nullptr, true};
++  }
+   if (utils::FileExists(update_certificates_path_.c_str())) {
+     LOG(INFO) << "Verifying using certificates: " << update_certificates_path_;
+     return {
