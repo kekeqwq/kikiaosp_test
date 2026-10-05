@@ -17,6 +17,18 @@ fixtures = packager.load_module("nonbootable_fixtures", "test-system-package.py"
 
 
 class Guards(unittest.TestCase):
+    def test_rc6_gate_rejects_old_or_ambiguous_kernel_derivation(self):
+        self.assertEqual(packager.KERNEL_VERSION, "7.3.0-rc6-4k")
+        for dependencies in (
+                {"/nix/store/old-linux-aarch64-unknown-linux-gnu-7.3.0-rc5-kikiaosp.drv": {}},
+                {"/nix/store/a-linux-aarch64-unknown-linux-gnu-7.3.0-rc6-kikiaosp.drv": {},
+                 "/nix/store/b-linux-aarch64-unknown-linux-gnu-7.3.0-rc6-kikiaosp.drv": {}}):
+            graph = {"/nix/store/bundle.drv": {"inputDrvs": dependencies}}
+            with patch.object(packager.builder, "run", return_value=json.dumps(graph).encode()) as run:
+                with self.assertRaisesRegex(ValueError, "expected pinned Linux derivation"):
+                    packager.kernel_notices(Path("NONBOOTABLE-no-kernel"), "0" * 64)
+                self.assertEqual(run.call_count, 1)
+
     def test_incomplete_and_development_inputs_never_reach_git(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

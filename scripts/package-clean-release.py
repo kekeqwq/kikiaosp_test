@@ -38,7 +38,7 @@ FINISHED_PHASE = "clean-candidate-inputs-built-not-packaged-or-accepted"
 VERSION = "0.3.0-alpha"
 MODEL = "KikiAOSP 0.3 Alpha"
 FINGERPRINT = "KikiAOSP/kikiaosp_test/kikiaosp_test:17/CP2A.260605.016/KIKI_0.3.0_ALPHA:userdebug/test-keys"
-KERNEL_VERSION = "7.3.0-rc5-4k"
+KERNEL_VERSION = "7.3.0-rc6-4k"
 RELEASE_PROPERTIES = {
     "ro.kikiaosp.build_channel": "release", "ro.kikiaosp.system_version": VERSION,
     "ro.build.display.id": "KikiAOSP-0.3-Alpha", "ro.build.fingerprint": FINGERPRINT,
@@ -153,7 +153,7 @@ def kernel_notices(record, kernel_hash):
         raise ValueError("Ambiguous kernel bundle derivation.")
     top = next(iter(bundle.values()))
     dependencies = top.get("inputDrvs", top.get("inputs", {}).get("drvs", {}))
-    candidates = [key for key in dependencies if key.endswith("-linux-aarch64-unknown-linux-gnu-7.3.0-rc5-kikiaosp.drv")]
+    candidates = [key for key in dependencies if key.endswith("-linux-aarch64-unknown-linux-gnu-7.3.0-rc6-kikiaosp.drv")]
     if len(candidates) != 1:
         raise ValueError("The kernel bundle lacks the expected pinned Linux derivation.")
     drv = candidates[0]
@@ -363,7 +363,7 @@ def main():
                      "manifestSha256": audit["manifestSha256"], "projectCount": source["projectCount"]},
             "device": {"repository": "https://github.com/kekeqwq/kikiaosp_test", "commit": audit["deviceCommit"]},
             "kernel": {"repository": "https://github.com/kekeqwq/kikiaosp_kernel", "commit": audit["kernelCommit"],
-                       "flakeLockSha256": audit["flakeLockSha256"], "sourceVersion": "7.3-rc5", "imageSha256": audit["kernelImageSha256"]},
+                       "flakeLockSha256": audit["flakeLockSha256"], "sourceVersion": "7.3-rc6", "imageSha256": audit["kernelImageSha256"]},
             "build": {"cleanSource": True, "independentOutput": True, "outputRecipe": "kikiaosp-release-v1",
                       "tools": {"mkbootfsSha256": boot_recipe["inputs"]["mkbootfsSha256"],
                                 "mkbootimgSha256": boot_recipe["inputs"]["mkbootimgSha256"],
