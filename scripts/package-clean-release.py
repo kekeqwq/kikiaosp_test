@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Produce a format-1 candidate ONLY from finished, audited clean build inputs.
 
-No development bundle/disk, fixture ZIP, userdata or arbitrary image inputs.
+No development disk, fixture userdata or arbitrary image inputs. Native rc6
+kernel reuse may retain the exact hash-pinned prior audited release kernel
+receipt after Nix GC/rebuild; it never imports that release's system/userdata.
 The output is NEW; generating/validating a ZIP is not boot/user acceptance.
 Requires python-jsonschema and the matching AOSP host filesystem tools.
 """
@@ -150,6 +152,38 @@ def normalized_derivations(raw):
     return value.get("derivations", value)
 
 
+def historical_native_rc6_notice(record, kernel_hash, drv, src, live_hash):
+    # Nix input-addressed outputs may rebuild to different bytes after GC.
+    # Retain the ALREADY BOOT/USER-AUDIO-TESTED kernel, never silently switch
+    # it to the replacement Image or claim they are byte reproducible.
+    expected_image = "38c6ad1d6cffc76af1f4b6ce66ba42db4d8865b0f60b842fd147bef52b3a5b7c"
+    baseline = Path("/home/keke/projects/kikiaosp-package-alpha-0.3-rc6/KikiAOSP-0.3.0-alpha-arm64.zip")
+    expected_zip = "3fab8e602ff653cb620a1b9b31358f724ca4444c6b12edfcb94a4e282648e1f3"
+    native = record / "device-source/device/kiki/kikiaosp_test/ota/product.mk"
+    if kernel_hash != expected_image or drv != "/nix/store/kv6ydvd7v35wak76jq7snngsijkd1dw1-linux-aarch64-unknown-linux-gnu-7.3.0-rc6-kikiaosp.drv" or not native.is_file() or "ro.kiki.ota.layout=gpt-ab-v1" not in native.read_text():
+        raise ValueError("Bundled kernel differs from the Nix Linux output; no exact historical native receipt authorized.")
+    if builder.digest(baseline) != expected_zip:
+        raise ValueError("Historical audited release kernel receipt ZIP changed.")
+    with zipfile.ZipFile(baseline) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+        lock_bytes = archive.read(manifest["sourceLock"]["path"])
+        if hashlib.sha256(lock_bytes).hexdigest() != manifest["sourceLock"]["sha256"]:
+            raise ValueError("Historical kernel source-lock receipt changed.")
+        lock = json.loads(lock_bytes)
+        if lock["kernel"]["imageSha256"] != expected_image or lock["kernel"]["sourceVersion"] != "7.3-rc6" or lock["kernel"]["commit"] != "f8020a4c6da14b98b285da2c3c5f2ab96a772486":
+            raise ValueError("Historical kernel built-source receipt changed.")
+        boot = next(item for item in manifest["payloads"] if item["role"] == "boot")
+        image = archive.read(boot["path"])
+        if hashlib.sha256(image).hexdigest() != boot["sha256"] or image[:8] != b"ANDROID!":
+            raise ValueError("Historical kernel boot payload changed.")
+        length = int.from_bytes(image[8:12], "little")
+        if hashlib.sha256(image[4096:4096+length]).hexdigest() != expected_image:
+            raise ValueError("Historical kernel bytes do not match the built-source receipt.")
+        # License text still comes from the ACTUAL derivation source below.
+        return {"baselineArchiveSha256": expected_zip, "historicalBuiltKernelCommit": lock["kernel"]["commit"], "retainedKernelImageSha256": expected_image,
+                "restoredLiveNixImageSha256": live_hash, "byteReproducible": False, "reason": "Exact audited rc6 kernel retained after Nix GC; replacement same-derivation output is not byte-identical"}
+
+
 def kernel_notices(record, kernel_hash):
     # Resolve COPYRIGHT from the ACTUAL pure Nix build graph, not a guessed
     # local source directory or a separately downloaded Linux release.
@@ -172,8 +206,10 @@ def kernel_notices(record, kernel_hash):
     output = Path(linux.get("env", {}).get("out", "")).resolve(strict=True)
     if Path("/nix/store") not in src.parents or Path("/nix/store") not in output.parents:
         raise ValueError("Kernel source/image must belong to the pure Nix derivation.")
-    if file_record(output / "Image")["sha256"] != kernel_hash:
-        raise ValueError("Bundled kernel differs from the Nix Linux output.")
+    live_hash = file_record(output / "Image")["sha256"]
+    historical = None
+    if live_hash != kernel_hash:
+        historical = historical_native_rc6_notice(record, kernel_hash, drv, src, live_hash)
     modules = record / "kernel-result/modules/lib/modules"
     if sorted(path.name for path in modules.iterdir() if path.is_dir()) != [KERNEL_VERSION]:
         raise ValueError("Actual Nix kernel release differs from the format-1 identity.")
@@ -182,7 +218,10 @@ def kernel_notices(record, kernel_hash):
         path = src / name
         file_record(path)
         chunks.append(("\n===== Linux " + name + " =====\n").encode() + path.read_bytes())
-    return b"".join(chunks), {"linuxDerivation": drv, "source": str(src)}
+    graph = {"linuxDerivation": drv, "source": str(src)}
+    if historical:
+        graph["historicalAuditedKernelReceipt"] = historical
+    return b"".join(chunks), graph
 
 
 def raw_erofs(source, target, tools):
