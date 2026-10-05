@@ -16,7 +16,7 @@ import java.util.concurrent.*;
 import java.util.zip.*;
 
 /** Both frontends submit to Android's native UpdateEngine, never to a second flasher. */
-public final class UpdateService extends Service {
+public final class UpdateService extends android.app.Service {
  private final ExecutorService worker=Executors.newSingleThreadExecutor();
  private final UpdateEngine engine=new UpdateEngine();
  private volatile boolean installing; private JSONObject candidate; private File stageFile;
@@ -27,7 +27,7 @@ public final class UpdateService extends Service {
  public static String status(Context c){return c.getSharedPreferences(PREF,0).getString("status","尚未检查更新。当前系统："+Build.DISPLAY);}
  private void state(String s,int nativeState){
   getSharedPreferences(PREF,0).edit().putString("status",s).apply();
-  Bundle b=new Bundle();b.putInt(SystemUpdateManager.KEY_STATUS,nativeState);b.putString(SystemUpdateManager.KEY_TITLE,Build.DISPLAY);
+  PersistableBundle b=new PersistableBundle();b.putInt(SystemUpdateManager.KEY_STATUS,nativeState);b.putString(SystemUpdateManager.KEY_TITLE,Build.DISPLAY);
   ((SystemUpdateManager)getSystemService(SYSTEM_UPDATE_SERVICE)).updateSystemUpdateInfo(b);
  }
  private void completeInstalled(){long pending=getSharedPreferences(PREF,0).getLong("pendingSequence",0);
