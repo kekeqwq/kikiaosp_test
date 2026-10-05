@@ -5,7 +5,7 @@
 The intermediate is an audited build artifact, never an old instance/data disk.
 Uses the same build's target-files and host OTA tools. Does not publish anything.
 """
-import argparse,hashlib,importlib.util,json,os,shutil,subprocess,zipfile
+import argparse,hashlib,importlib.util,json,os,shutil,stat,subprocess,zipfile
 from pathlib import Path
 import jsonschema
 
@@ -24,6 +24,17 @@ def unpack(z,name,out):
  with z.open(name) as i,out.open('xb') as o:shutil.copyfileobj(i,o,1<<20)
 def copy_entry(src,dst,info):
  with src.open(info.filename) as i,dst.open(info,'w',force_zip64=info.file_size>=2<<30) as o:shutil.copyfileobj(i,o,1<<20)
+
+def filesystem_tree(root):
+ out={}
+ for p in root.rglob('*'):
+  s=p.lstat();mode=stat.S_IMODE(s.st_mode)
+  if p.is_symlink():value='link:'+os.readlink(p)
+  elif p.is_dir():value='dir'
+  elif stat.S_ISREG(s.st_mode):value='sha256:'+digest(p)
+  else:raise ValueError('Unexpected reconstructed filesystem special file')
+  out[p.relative_to(root).as_posix()]=(mode,value)
+ return out
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--pipeline',type=Path,required=True);p.add_argument('--intermediate',type=Path,required=True);p.add_argument('--preparation',type=Path,required=True);p.add_argument('--record',type=Path,required=True);p.add_argument('--target-files',type=Path,required=True);p.add_argument('--host',type=Path,required=True);p.add_argument('--key-base',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--sequence',type=int,required=True);p.add_argument('--version',required=True);p.add_argument('--github-url',default='');a=p.parse_args()
@@ -75,12 +86,30 @@ def main():
  with zipfile.ZipFile(a.target_files) as src,zipfile.ZipFile(target,'x',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as dst:
   names=set(src.namelist());parts=src.read('META/ab_partitions.txt').decode().split()
   if set(parts)!=set(CAP) or len(parts)!=3:raise ValueError('Full payload must touch ONLY boot/system/vendor, never userdata/misc')
+  image_adaptation={}
   for role in ('system','vendor'):
    temp=stage/(role+'-target.img');unpack(src,'IMAGES/'+role+'.img',temp)
-   if digest(temp)!=digest(stage/(role+'.img')):raise ValueError('Target-files and audited filesystem image differ')
+   original_hash=digest(temp);canonical_hash=digest(stage/(role+'.img'))
+   differences=[]
+   if original_hash!=canonical_hash:
+    canonical=sys if role=='system' else stage/'vendor-readonly'
+    if role=='vendor':run([a.host/'bin/fsck.erofs','--extract='+str(canonical),stage/'vendor.img'])
+    reconstructed=stage/(role+'-target-readonly');run([a.host/'bin/fsck.erofs','--extract='+str(reconstructed),temp])
+    x,y=filesystem_tree(canonical),filesystem_tree(reconstructed)
+    differences=[n for n in sorted(set(x)|set(y)) if x.get(n)!=y.get(n)]
+    # AOSP target-files reconstruction adds these 32-bit DLKM compatibility
+    # entries even for our 64-bit-only embedded-system-dlkm direct target.
+    # Permit exactly that observed reconstruction effect, never changed APKs,
+    # libraries, properties, permissions, missing baseline files or other links.
+    synthetic={'system/lib':(0o755,'dir'),'system/lib/modules':(0o777,'link:/system_dlkm/lib/modules')}
+    if role=='system':
+     if any(n in x or y.get(n)!=synthetic.get(n) for n in differences):raise ValueError('Unexpected reconstructed system filesystem content/mode/link differences: '+str(differences))
+    elif differences:raise ValueError('Unexpected reconstructed vendor filesystem content/mode/link differences: '+str(differences))
+   image_adaptation[role]={'originalTargetImageSha256':original_hash,'canonicalAuditedImageSha256':canonical_hash,'reconstructedFilesystemDifferences':differences}
    temp.unlink()
   for info in src.infolist():
-   if info.filename=='IMAGES/boot.img':dst.write(stage/'boot.img',info.filename,compress_type=zipfile.ZIP_DEFLATED)
+   if info.filename in ('IMAGES/boot.img','IMAGES/system.img','IMAGES/vendor.img'):
+    dst.write(stage/(Path(info.filename).stem+'.img'),info.filename,compress_type=zipfile.ZIP_DEFLATED)
    else:copy_entry(src,dst,info)
   if 'IMAGES/boot.img' not in names:dst.write(stage/'boot.img','IMAGES/boot.img',compress_type=zipfile.ZIP_DEFLATED)
  env=dict(os.environ,PATH=str(a.host/'bin')+':/usr/bin:/bin',LD_LIBRARY_PATH=str(a.host/'lib64'))
@@ -96,7 +125,7 @@ def main():
  wrapper=a.output/'KikiAOSP-0.3.0-alpha-full.ota.zip'
  with zipfile.ZipFile(wrapper,'x',compression=zipfile.ZIP_STORED) as z:
   z.write(stage/'payload.bin','payload.bin');z.writestr('payload_properties.txt',properties);z.writestr('META-INF/com/android/metadata',metadata);z.writestr('kiki-ota.json',raw(cat));z.write(signature,'kiki-ota.sig')
- proof={'kind':'org.kiki.native-ota-build-proof','sequence':a.sequence,'nonrelease':not a.github_url,'sourceIntermediateSha256':digest(a.intermediate),'originalTargetFilesSha256':digest(a.target_files),'adaptedTargetFilesSha256':digest(target),'deviceBuiltCommit':lock['device']['commit'],'contractPipelineCommit':lock['contract']['revision'],'partitionRoles':list(CAP),'userdataTouched':False,'baselineSha256':digest(baseline),'otaSha256':digest(wrapper),'payloadSha256':cat['payload_sha256'],'tools':{name:digest(a.host/'bin'/name) for name in ('ota_from_target_files','brillo_update_payload','delta_generator')}}
+ proof={'kind':'org.kiki.native-ota-build-proof','sequence':a.sequence,'nonrelease':not a.github_url,'sourceIntermediateSha256':digest(a.intermediate),'originalTargetFilesSha256':digest(a.target_files),'adaptedTargetFilesSha256':digest(target),'deviceBuiltCommit':lock['device']['commit'],'contractPipelineCommit':lock['contract']['revision'],'partitionRoles':list(CAP),'filesystemImageAdaptation':image_adaptation,'userdataTouched':False,'baselineSha256':digest(baseline),'otaSha256':digest(wrapper),'payloadSha256':cat['payload_sha256'],'tools':{name:digest(a.host/'bin'/name) for name in ('ota_from_target_files','brillo_update_payload','delta_generator')}}
  (a.output/'native-ota-proof.json').write_bytes(raw(proof));print(json.dumps(proof,indent=2),flush=True)
 
 if __name__=='__main__':main()
