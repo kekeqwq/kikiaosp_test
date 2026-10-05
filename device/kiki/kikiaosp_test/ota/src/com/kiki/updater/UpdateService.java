@@ -19,7 +19,9 @@ import java.util.zip.*;
 public final class UpdateService extends Service {
  private final ExecutorService worker=Executors.newSingleThreadExecutor();
  private final UpdateEngine engine=new UpdateEngine();
- private volatile boolean installing; private JSONObject candidate;
+ private volatile boolean installing; private JSONObject candidate; private File stageFile;
+ private void discardStage(File f){try{if(f!=null&&f.getCanonicalFile().getParentFile().getParentFile().equals(getFilesDir().getCanonicalFile())&&f.getParentFile().getName().matches("ota-[0-9a-f-]{36}")){f.delete();f.getParentFile().delete();}}catch(Exception e){android.util.Log.w("KikiUpdater","Stage cleanup failed",e);}}
+ private void clearPending(){discardStage(new File(getSharedPreferences(PREF,0).getString("stage","/invalid")));getSharedPreferences(PREF,0).edit().remove("stage").putLong("pendingSequence",0).putBoolean("rebootReady",false).commit();}
  private static final String PREF="ota",API="https://api.github.com/repos/kekeqwq/kikiaosp_test/releases?per_page=30";
  private static final long MAX=8L*1024*1024*1024;
  public static String status(Context c){return c.getSharedPreferences(PREF,0).getString("status","尚未检查更新。当前系统："+Build.DISPLAY);}
@@ -28,9 +30,10 @@ public final class UpdateService extends Service {
   Bundle b=new Bundle();b.putInt(SystemUpdateManager.KEY_STATUS,nativeState);b.putString(SystemUpdateManager.KEY_TITLE,Build.DISPLAY);
   ((SystemUpdateManager)getSystemService(SYSTEM_UPDATE_SERVICE)).updateSystemUpdateInfo(b);
  }
- public void onCreate(){super.onCreate();
-  long pending=getSharedPreferences(PREF,0).getLong("pendingSequence",0);
-  if(pending>0&&SystemProperties.getLong("ro.kiki.ota.sequence",0)>=pending&&SystemProperties.get("sys.boot_completed").equals("1"))getSharedPreferences(PREF,0).edit().putLong("acceptedSequence",pending).putLong("pendingSequence",0).putBoolean("rebootReady",false).commit();
+ private void completeInstalled(){long pending=getSharedPreferences(PREF,0).getLong("pendingSequence",0);
+  if(pending>0&&SystemProperties.getLong("ro.kiki.ota.sequence",0)>=pending&&SystemProperties.get("sys.kiki.ota.boot_verified").equals("1")){getSharedPreferences(PREF,0).edit().putLong("acceptedSequence",pending).commit();clearPending();state("更新已完成。当前系统："+Build.DISPLAY,SystemUpdateManager.STATUS_IDLE);}}
+ public void onCreate(){super.onCreate();completeInstalled();
+  if(SystemProperties.getBoolean("ro.boot.kiki_ota_rollback",false)){engine.resetStatus();clearPending();state("新槽未通过启动检查，已回退到原系统。用户数据未格式化；请查看日志。",SystemUpdateManager.STATUS_IDLE);}
   NotificationManager n=getSystemService(NotificationManager.class);n.createNotificationChannel(new NotificationChannel("ota","系统更新",NotificationManager.IMPORTANCE_LOW));
   startForeground(3,new Notification.Builder(this,"ota").setSmallIcon(android.R.drawable.stat_sys_download).setContentTitle("Kiki 系统更新").setContentText("签名全量 OTA · 保留用户数据").build());
   engine.bind(new UpdateEngineCallback(){
@@ -38,17 +41,18 @@ public final class UpdateService extends Service {
     if(s==UpdateEngine.UpdateStatusConstants.UPDATED_NEED_REBOOT){installing=false;getSharedPreferences(PREF,0).edit().putBoolean("rebootReady",true).commit();state("更新已安装到备用槽。请重启完成更新。",SystemUpdateManager.STATUS_WAITING_REBOOT);}
     else if(s==UpdateEngine.UpdateStatusConstants.DOWNLOADING||s==UpdateEngine.UpdateStatusConstants.VERIFYING||s==UpdateEngine.UpdateStatusConstants.FINALIZING){installing=true;state("原生更新引擎：阶段 "+s+"，"+Math.round(p*100)+"%",SystemUpdateManager.STATUS_IN_PROGRESS);}
    }
-   public void onPayloadApplicationComplete(int code){if(code!=0){installing=false;state("安装失败（update_engine="+code+"）。当前系统保持有效；请查看日志后重试。",SystemUpdateManager.STATUS_IDLE);}}
+   public void onPayloadApplicationComplete(int code){if(code!=0){installing=false;clearPending();state("安装失败（update_engine="+code+"）。当前系统保持有效；请查看日志后重试。",SystemUpdateManager.STATUS_IDLE);}}
   },new Handler(getMainLooper()));
  }
  public int onStartCommand(Intent i,int flags,int id){if(i==null)return START_NOT_STICKY;final String cmd=i.getStringExtra("command"),path=i.getStringExtra("path");
   worker.execute(()->{try{
-   if(cmd.equals("check")){if(installing)throw new IOException("正在安装，不能重复检查/提交");check();}
+   if(cmd.equals("resume")){for(int wait=0;wait<60&&!SystemProperties.get("sys.kiki.ota.boot_verified").equals("1");wait++)Thread.sleep(1000);completeInstalled();long pending=getSharedPreferences(PREF,0).getLong("pendingSequence",0);if(pending>current()&&!getSharedPreferences(PREF,0).getBoolean("rebootReady",false)){File f=new File(getSharedPreferences(PREF,0).getString("stage","/invalid"));if(!f.getCanonicalFile().getParentFile().getParentFile().equals(getFilesDir().getCanonicalFile()))throw new IOException("持久事务路径无效");apply(f,null);}}
+   else if(cmd.equals("check")){if(installing||getSharedPreferences(PREF,0).getBoolean("rebootReady",false))throw new IOException("正在安装或等待重启，不能重复提交");check();}
    else if(cmd.equals("install")){if(candidate==null)throw new IOException("请先检查更新");download(candidate);}
    else if(cmd.equals("apply")){applyOffline(path);}
    else if(cmd.equals("reboot")){reboot();}
    else throw new IOException("未知命令");
-  }catch(Exception e){android.util.Log.e("KikiUpdater","OTA command failed",e);state("更新未完成："+e.getMessage(),SystemUpdateManager.STATUS_IDLE);}});return START_NOT_STICKY;
+  }catch(Exception e){android.util.Log.e("KikiUpdater","OTA command failed",e);if(!installing&&!getSharedPreferences(PREF,0).getBoolean("rebootReady",false)){discardStage(stageFile);clearPending();state("更新未完成："+e.getMessage(),SystemUpdateManager.STATUS_IDLE);}}});return START_NOT_STICKY;
  }
  public IBinder onBind(Intent i){return null;}
  public void onDestroy(){engine.unbind();worker.shutdown();super.onDestroy();}
@@ -57,9 +61,9 @@ public final class UpdateService extends Service {
   if(raw.length>65536||sig.length!=256)throw new IOException("签名元数据长度错误");Signature v=Signature.getInstance("SHA256withRSA");v.initVerify(key());v.update(raw);if(!v.verify(sig))throw new IOException("不是受信任的 Kiki OTA 签名");
   // JSONObject normally accepts duplicate keys; reject them before interpreting security metadata.
   String text=new String(raw,java.nio.charset.StandardCharsets.UTF_8);Set<String> keys=new HashSet<>();java.util.regex.Matcher m=java.util.regex.Pattern.compile("\\\"([^\\\"\\\\]+)\\\"\\s*:").matcher(text);while(m.find())if(!keys.add(m.group(1)))throw new IOException("重复的 OTA 字段");
-  JSONObject j=new JSONObject(text);Set<String> allowed=new HashSet<>(Arrays.asList("kind","format","device","layout","sequence","version","payload_sha256","payload_bytes","ota_url"));
+  JSONObject j=new JSONObject(text);Set<String> allowed=new HashSet<>(Arrays.asList("kind","format","device","layout","android_major","sequence","version","payload_sha256","payload_bytes","ota_url"));
   Iterator<String> it=j.keys();while(it.hasNext())if(!allowed.remove(it.next()))throw new IOException("未知 OTA 字段");if(!allowed.isEmpty())throw new IOException("OTA 字段缺失");
-  if(!j.getString("kind").equals("org.kiki.ota.full")||j.getInt("format")!=1||!j.getString("device").equals("kikiaosp_test")||!j.getString("layout").equals("gpt-ab-v1"))throw new IOException("设备/布局不兼容");
+  if(!j.getString("kind").equals("org.kiki.ota.full")||j.getInt("format")!=1||!j.getString("device").equals("kikiaosp_test")||!j.getString("layout").equals("gpt-ab-v1")||j.getInt("android_major")!=17)throw new IOException("设备/布局不兼容");
   if(!j.getString("payload_sha256").matches("[0-9a-f]{64}")||j.getLong("payload_bytes")<=0||j.getLong("payload_bytes")>MAX||j.getLong("sequence")<=0)throw new IOException("无效的 OTA 完整性约束");
   return j;
  }
@@ -85,7 +89,7 @@ public final class UpdateService extends Service {
  }
  private byte[] fetch(String url,int limit)throws Exception{HttpsURLConnection c=connection(url);try(InputStream in=c.getInputStream()){return bounded(in,limit);}finally{c.disconnect();}}
  private static byte[] bounded(InputStream in,int limit)throws Exception{ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[8192];for(int n;(n=in.read(b))!=-1;){if(out.size()+n>limit)throw new IOException("元数据超出上限");out.write(b,0,n);}return out.toByteArray();}
- private File newStage()throws Exception{File d=new File(getFilesDir(),"ota-"+UUID.randomUUID());if(!d.mkdir())throw new IOException("无法创建独立更新目录");return new File(d,"update.ota.zip");}
+ private File newStage()throws Exception{File d=new File(getFilesDir(),"ota-"+UUID.randomUUID());if(!d.mkdir())throw new IOException("无法创建独立更新目录");stageFile=new File(d,"update.ota.zip");return stageFile;}
  private void download(JSONObject j)throws Exception{
   if(installing||getSharedPreferences(PREF,0).getBoolean("rebootReady",false))throw new IOException("已有安装/待重启事务");File f=newStage();releaseUrl(j.getString("ota_url"));HttpsURLConnection c=connection(j.getString("ota_url"));long total=0;
   try(InputStream in=c.getInputStream();FileOutputStream out=new FileOutputStream(f)){byte[] b=new byte[65536];for(int n;(n=in.read(b))!=-1;){total+=n;if(total>MAX)throw new IOException("更新包超出上限");out.write(b,0,n);if(total%(16*1024*1024)<65536)state("下载中："+(total/(1024*1024))+" MiB",SystemUpdateManager.STATUS_WAITING_DOWNLOAD);}out.getFD().sync();}finally{c.disconnect();}
@@ -95,6 +99,7 @@ public final class UpdateService extends Service {
   if(path==null||!path.matches("/data/local/tmp/kiki-ota/incoming-[0-9a-f-]{36}\\.ota\\.zip"))throw new IOException("非实例专属 OTA 暂存路径");if(installing||getSharedPreferences(PREF,0).getBoolean("rebootReady",false))throw new IOException("已有安装/待重启事务");
   File src=new File(path);if(!src.getCanonicalPath().equals(path)||src.length()<=0||src.length()>MAX)throw new IOException("无效的离线包");File f=newStage();
   try(FileInputStream in=new FileInputStream(src);FileOutputStream out=new FileOutputStream(f)){byte[] b=new byte[65536];long size=0;for(int n;(n=in.read(b))!=-1;){size+=n;if(size>MAX)throw new IOException("包超出上限");out.write(b,0,n);}out.getFD().sync();}
+  SystemProperties.set("sys.kiki.ota.imported",path.substring(path.lastIndexOf("incoming-")+9,path.length()-8));
   apply(f,null);
  }
  private void apply(File file,JSONObject expected)throws Exception{
