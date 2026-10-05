@@ -5,7 +5,7 @@
  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
- <application android:label="Kiki System Update" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="false" android:allowBackup="false">
+ <application android:label="Kiki System Update" android:theme="@style/KikiUpdaterTheme" android:usesCleartextTraffic="false" android:allowBackup="false">
   <activity android:name=".UpdateActivity" android:exported="true">
    <intent-filter><action android:name="android.settings.SYSTEM_UPDATE_SETTINGS"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>
   </activity>
