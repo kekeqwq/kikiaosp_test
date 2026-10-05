@@ -69,6 +69,14 @@ else
   echo "KikiAOSP storage-category patch does not apply cleanly" >&2
   exit 1
 fi
+no_wipe_patch="$REPO_ROOT/patches/aosp-kikiaosp-ota-no-userdata-wipe.patch"
+if git -C "$AOSP_ROOT" apply --check "$no_wipe_patch"; then
+  git -C "$AOSP_ROOT" apply "$no_wipe_patch"
+elif git -C "$AOSP_ROOT" apply --reverse --check "$no_wipe_patch"; then
+  echo "Kiki native no-wipe gate already applied"
+else
+  echo "Kiki native no-wipe gate does not apply cleanly" >&2; exit 1
+fi
 audio_pcm_patch="$REPO_ROOT/patches/aosp-kikiaosp-synchronous-pcm.patch"
 if git -C "$AOSP_ROOT" apply --check "$audio_pcm_patch"; then
   git -C "$AOSP_ROOT" apply "$audio_pcm_patch"

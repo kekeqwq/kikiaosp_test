@@ -78,6 +78,13 @@ def main():
     audio_patch = snapshot / 'patches/aosp-kikiaosp-synchronous-pcm.patch'
     run('git', '-C', aosp, 'apply', '--check', audio_patch)
     run('git', '-C', aosp, 'apply', audio_patch)
+    inherited_wipe = old / 'device-source/patches/aosp-kikiaosp-ota-no-userdata-wipe.patch'
+    if inherited_wipe.exists():
+        run('git', '-C', aosp, 'apply', '--reverse', '--check', inherited_wipe)
+        run('git', '-C', aosp, 'apply', '--reverse', inherited_wipe)
+    no_wipe = snapshot / 'patches/aosp-kikiaosp-ota-no-userdata-wipe.patch'
+    run('git', '-C', aosp, 'apply', '--check', no_wipe)
+    run('git', '-C', aosp, 'apply', no_wipe)
     run('bash', snapshot / 'scripts/audit-aosp-integration.sh', aosp)
     value = dict(audit, deviceCommit=dc, kernelCommit=kc, aosp=str(aosp), output=str(out),
                  systemVersion='0.3.0-alpha', phase='building-aosp', sharedInputs=mode,

@@ -15,6 +15,7 @@ integration_patches=(
   "$REPO_ROOT/patches/aosp-kikiaosp-exact-storage-size.patch"
   "$REPO_ROOT/patches/aosp-kikiaosp-storage-category-floor.patch"
   "$REPO_ROOT/patches/aosp-kikiaosp-synchronous-pcm.patch"
+  "$REPO_ROOT/patches/aosp-kikiaosp-ota-no-userdata-wipe.patch"
 )
 : > "$tmp/expected"
 for integration_patch in "${integration_patches[@]}"; do
@@ -59,6 +60,9 @@ git -C "$AOSP_ROOT" apply --reverse --check \
   "$REPO_ROOT/patches/aosp-kikiaosp-init-virtio-boot-uuid.patch" || {
   echo "AOSP source does not match the virtio boot-partition UUID patch" >&2
   exit 1
+}
+git -C "$AOSP_ROOT" apply --reverse --check "$REPO_ROOT/patches/aosp-kikiaosp-ota-no-userdata-wipe.patch" || {
+  echo "Native OTA userdata preservation gate missing" >&2; exit 1
 }
 git -C "$AOSP_ROOT" apply --reverse --check \
   "$REPO_ROOT/patches/aosp-kikiaosp-synchronous-pcm.patch" || {

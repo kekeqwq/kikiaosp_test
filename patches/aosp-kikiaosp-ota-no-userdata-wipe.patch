@@ -1,0 +1,17 @@
+diff --git a/system/fs/fs_mgr/fs_mgr.cpp b/system/fs/fs_mgr/fs_mgr.cpp
+--- a/system/fs/fs_mgr/fs_mgr.cpp
++++ b/system/fs/fs_mgr/fs_mgr.cpp
+@@ -1705,6 +1705,12 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
+         // Mounting failed, understand why and retry.
+         wiped = partition_wiped(current_entry.blk_device.c_str());
++        // A Kiki A/B OTA never authorizes a userdata wipe. Only the virtual
++        // bootloader's NEW-instance first-boot token permits initial formatting.
++        const bool kiki_data_preserved = current_entry.mount_point == "/data" &&
++                android::base::GetProperty("ro.kiki.ota.layout", "") == "gpt-ab-v1" &&
++                !android::base::GetBoolProperty("ro.boot.kiki_first_boot", false);
+         if (mount_errno != EBUSY && mount_errno != EACCES &&
+-            current_entry.fs_mgr_flags.formattable && (wiped || encryption_interrupted)) {
++            current_entry.fs_mgr_flags.formattable && !kiki_data_preserved &&
++            (wiped || encryption_interrupted)) {
+             // current_entry and attempted_entry point at the same partition, but sometimes
+             // at two different lines in the fstab.  Use current_entry for formatting
