@@ -95,6 +95,8 @@ def main():
                                   ('kernel-recipe', args.kernel_repo, build['kernelCommit'])]:
         git_export(repo, revision, output / (name + '.tar'))
     git_export(args.device_repo, audit['packagingCommit'], output / 'package-recipe.tar')
+    collection_commit = subprocess.check_output(['git', '-C', str(args.device_repo), 'rev-parse', 'HEAD']).decode().strip()
+    git_export(args.device_repo, collection_commit, output / 'source-collection-recipe.tar')
     kernel_source = Path(audit['kernelGraph']['source'])
     if not kernel_source.is_dir() or not str(kernel_source).startswith('/nix/store/'):
         raise ValueError('Expected the actual recorded immutable Nix kernel source')
@@ -122,7 +124,9 @@ def main():
                   'noticeIdentifiedCopyleftComponents': sorted(labels), 'projects': source_records,
                   'kernelSourceArchive': source_archive.name, 'kernelSourceArchiveSha256': sha(source_archive),
                   'kernelBuiltConfigSha256': hashlib.sha256(actual_config).hexdigest(),
-                  'kernelInputGraph': audit['kernelGraph']}
+                  'kernelInputGraph': audit['kernelGraph'],
+                  'sourceCollectionCommit': collection_commit,
+                  'sourceCollectionRecipeSha256': sha(output / 'source-collection-recipe.tar')}
     (output / 'source-provenance.json').write_text(json.dumps(provenance, indent=2) + '\n')
     (output / 'BUILDING.txt').write_text(
         'KikiAOSP 0.3 Alpha corresponding-source materials\n\n'
@@ -139,7 +143,8 @@ def main():
         'Keep all original per-file licenses/notices. LGPL shared libraries may be rebuilt/replaced\n'
         'by building a new system package; no locked bootloader or modified-library prohibition is used.\n'
         'This source kit contains no userdata/disk, credentials, developer logs or build output images.\n'
-        'This is a NONRELEASE native OTA candidate; no public tag or Release is claimed.\n'
+        'These materials describe the exact built native OTA system, including pre-publication regression sources.\n'
+        'Public catalog/wrapper promotion is recorded separately; it must not change the native payload or images.\n'
         'Actual built device identity above, not a later pipeline HEAD, describes the system.\n'
         'linux-built.config was extracted from the exact shipped kernel; linux-declared.config is the recipe input.\n'
         'Any historical retained-kernel / Nix rebuild byte difference is recorded explicitly in source-provenance.json.\n')
