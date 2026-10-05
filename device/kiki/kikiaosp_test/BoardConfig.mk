@@ -16,7 +16,6 @@ TARGET_SUPPORTS_64_BIT_APPS := true
 # Physical A/B: generous independent system slots, shared persistent F2FS.
 # The Windows supervisor implements the virtual bootloader using AOSP BCB.
 BOARD_AVB_ENABLE := false
-BOARD_BUILD_SYSTEM_ROOT_IMAGE := false
 BOARD_CACHEIMAGE_FILE_SYSTEM_TYPE :=
 BOARD_CACHEIMAGE_PARTITION_SIZE :=
 BOARD_USES_METADATA_PARTITION := false

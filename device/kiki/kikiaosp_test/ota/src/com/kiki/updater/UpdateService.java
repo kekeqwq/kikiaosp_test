@@ -29,6 +29,8 @@ public final class UpdateService extends Service {
   ((SystemUpdateManager)getSystemService(SYSTEM_UPDATE_SERVICE)).updateSystemUpdateInfo(b);
  }
  public void onCreate(){super.onCreate();
+  long pending=getSharedPreferences(PREF,0).getLong("pendingSequence",0);
+  if(pending>0&&SystemProperties.getLong("ro.kiki.ota.sequence",0)>=pending&&SystemProperties.get("sys.boot_completed").equals("1"))getSharedPreferences(PREF,0).edit().putLong("acceptedSequence",pending).putLong("pendingSequence",0).putBoolean("rebootReady",false).commit();
   NotificationManager n=getSystemService(NotificationManager.class);n.createNotificationChannel(new NotificationChannel("ota","系统更新",NotificationManager.IMPORTANCE_LOW));
   startForeground(3,new Notification.Builder(this,"ota").setSmallIcon(android.R.drawable.stat_sys_download).setContentTitle("Kiki 系统更新").setContentText("签名全量 OTA · 保留用户数据").build());
   engine.bind(new UpdateEngineCallback(){
