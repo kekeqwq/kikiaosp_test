@@ -110,6 +110,11 @@ def audit_inputs(preparation, record):
     actual_names = {path.relative_to(aosp).as_posix() for path in (aosp / subtree).rglob("*") if path.is_file() or path.is_symlink()}
     if actual_names != names:
         raise ValueError("Integrated device contains missing or unexpected files.")
+    # Native Android kernel/target-files target uses an explicit generated
+    # dependency, never secret or untracked files in the device overlay.
+    if (device / 'device/kiki/kikiaosp_test/ota/product.mk').exists():
+        native_inputs = load_module('native_generated_inputs', 'prepare-native-build-inputs.py')
+        native_inputs.verify(aosp, record)
     for name in sorted(names):
         if file_record(aosp / name) != file_record(device / name):
             raise ValueError(f"Integrated device differs from its frozen source: {name}")
