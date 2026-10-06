@@ -118,7 +118,7 @@ def main():
     expected = {"recipe": "kikiaosp-release-v1", "deviceCommit": device_commit,
                 "kernelCommit": kernel_commit, "manifestSha256": source["manifestSha256"],
                 "aosp": str(aosp), "output": str(out), "product": "kikiaosp_test_arm64_phone_release",
-                "systemVersion": "0.3.0-alpha", "sharedInputs": source.get("sharedInputs", "Git objects only; no development outputs/images")}
+                "systemVersion": "0.3.1-alpha", "sharedInputs": source.get("sharedInputs", "Git objects only; no development outputs/images")}
     if args.resume:
         if any(audit.get(key) != value for key, value in expected.items()):
             raise ValueError("Resume must use the SAME frozen commits, paths and recipe.")
@@ -187,9 +187,9 @@ def main():
                     if line and not line.startswith("#") and "=" in line:
                         key, value = line.split("=", 1)
                         props[key] = value
-        for key, value in {"ro.kikiaosp.build_channel": "release", "ro.kikiaosp.system_version": "0.3.0-alpha",
-                           "ro.build.display.id": "KikiAOSP-0.3-Alpha",
-                           "ro.build.fingerprint": "KikiAOSP/kikiaosp_test/kikiaosp_test:17/CP2A.260605.016/KIKI_0.3.0_ALPHA:userdebug/test-keys"}.items():
+        for key, value in {"ro.kikiaosp.build_channel": "release", "ro.kikiaosp.system_version": "0.3.1-alpha",
+                           "ro.build.display.id": "KikiAOSP-0.3.1-Alpha",
+                           "ro.build.fingerprint": "KikiAOSP/kikiaosp_test/kikiaosp_test:17/CP2A.260605.016/KIKI_0.3.1_ALPHA:userdebug/test-keys"}.items():
             if props.get(key) != value:
                 raise ValueError(f"Actual built release property mismatch: {key}={props.get(key)}")
         audit["verifiedProperties"] = {key: value for key, value in props.items() if key.startswith("ro.kikiaosp.") or key in ("ro.build.display.id", "ro.build.fingerprint")}

@@ -102,7 +102,7 @@ def main():
   lock['sourceLockVersion']=2;lock['contract']['manifestSchemaSha256']=pin['files']['manifest.schema.json'];lock['contract']['sourceLockSchemaSha256']=pin['files']['source-lock.schema.json'];lock['contract']['revision']=subprocess.check_output(['git','-C',str(a.pipeline),'rev-parse','HEAD']).decode().strip()
   lock_bytes=raw(lock);manifest['sourceLock'].update(bytes=len(lock_bytes),sha256=hashlib.sha256(lock_bytes).hexdigest())
   jsonschema.Draft202012Validator(json.loads((schemas/'manifest.schema.json').read_text())).validate(manifest);jsonschema.Draft202012Validator(json.loads((schemas/'source-lock.schema.json').read_text())).validate(lock)
-  baseline=a.output/'KikiAOSP-0.3.0-alpha-arm64-ab.zip'
+  baseline=a.output/('KikiAOSP-'+manifest['systemVersion']+'-arm64-ab.zip')
   with zipfile.ZipFile(baseline,'x',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as out:
    for info in original.infolist():
     if info.filename=='manifest.json':out.writestr(info,raw(manifest))
@@ -154,7 +154,7 @@ def main():
  cat={'kind':'org.kiki.ota.full','format':1,'device':'kikiaosp_test','layout':'gpt-ab-v1','android_major':17,'sequence':a.sequence,'version':a.version,'payload_sha256':digest(stage/'payload.bin'),'payload_bytes':(stage/'payload.bin').stat().st_size,'ota_url':a.github_url}
  (a.output/'KikiAOSP-ota.json').write_bytes(raw(cat));signature=a.output/'KikiAOSP-ota.sig';run(['openssl','dgst','-sha256','-sign',a.key_base.with_suffix('.pem'),'-out',signature,a.output/'KikiAOSP-ota.json'])
  if signature.stat().st_size!=256:raise ValueError('Unexpected publisher RSA signature size')
- wrapper=a.output/'KikiAOSP-0.3.0-alpha-full.ota.zip'
+ wrapper=a.output/('KikiAOSP-'+manifest['systemVersion']+'-full.ota.zip')
  with zipfile.ZipFile(wrapper,'x',compression=zipfile.ZIP_STORED) as z:
   z.write(stage/'payload.bin','payload.bin');z.writestr('payload_properties.txt',properties);z.writestr('META-INF/com/android/metadata',metadata);z.writestr('kiki-ota.json',raw(cat));z.write(signature,'kiki-ota.sig')
  proof={'kind':'org.kiki.native-ota-build-proof','sequence':a.sequence,'nonrelease':not a.github_url,'sourceIntermediateSha256':digest(a.intermediate),'originalTargetFilesSha256':digest(a.target_files),'adaptedTargetFilesSha256':digest(target),'deviceBuiltCommit':lock['device']['commit'],'contractPipelineCommit':lock['contract']['revision'],'partitionRoles':list(CAP),'physicalAbHostToolAdaptation':tool_adaptation,'filesystemImageAdaptation':image_adaptation,'kernelInputGraph':json.loads((a.intermediate.parent/'package-audit.json').read_text())['kernelGraph'],'matchingJavaSha256':digest(jdk/'bin/java'),'userdataTouched':False,'baselineSha256':digest(baseline),'otaSha256':digest(wrapper),'payloadSha256':cat['payload_sha256'],'tools':{name:digest(a.host/'bin'/name) for name in ('ota_from_target_files','brillo_update_payload','delta_generator')}}

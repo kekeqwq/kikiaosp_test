@@ -1,0 +1,14 @@
+# Read-only native allocation inventory; no filesystem or disk modification.
+service kiki-storage-accounting /system/bin/kiki_storage_stats
+    class late_start
+    user root
+    group root disk
+    seclabel u:r:su:s0
+    disabled
+    oneshot
+
+on property:sys.boot_completed=1 && property:ro.kiki.ota.layout=gpt-ab-v1
+    start kiki-storage-accounting
+
+on property:sys.kiki.storage.refresh=* && property:sys.boot_completed=1
+    start kiki-storage-accounting

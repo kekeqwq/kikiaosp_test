@@ -14,6 +14,7 @@ integration_patches=(
   "$REPO_ROOT/patches/aosp-kikiaosp-init-virtio-boot-uuid.patch"
   "$REPO_ROOT/patches/aosp-kikiaosp-exact-storage-size.patch"
   "$REPO_ROOT/patches/aosp-kikiaosp-storage-category-floor.patch"
+  "$REPO_ROOT/patches/aosp-kikiaosp-sparse-ab-storage-accounting.patch"
   "$REPO_ROOT/patches/aosp-kikiaosp-synchronous-pcm.patch"
   "$REPO_ROOT/patches/aosp-kikiaosp-ota-no-userdata-wipe.patch"
   "$REPO_ROOT/patches/aosp-kikiaosp-native-ota-trust.patch"
@@ -77,6 +78,10 @@ grep -Fq 'ro.vendor.audio.kiki.synchronous_pcm=true' \
   "$AOSP_ROOT/device/kiki/kikiaosp_test/kikiaosp_test_arm64_phone.mk" || {
   echo "Kiki virtio-snd output must use lossless synchronous PCM backpressure" >&2
   exit 1
+}
+git -C "$AOSP_ROOT" apply --reverse --check \
+  "$REPO_ROOT/patches/aosp-kikiaosp-sparse-ab-storage-accounting.patch" || {
+  echo "Sparse physical A/B accounting source mismatch" >&2; exit 1
 }
 camera_main="$AOSP_ROOT/device/kiki/kikiaosp_test/camera/kikiaosp_main.cpp"
 git -C "$AOSP_ROOT" apply --reverse --check \

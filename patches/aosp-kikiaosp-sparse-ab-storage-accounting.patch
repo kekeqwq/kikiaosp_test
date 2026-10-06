@@ -1,0 +1,275 @@
+diff --git a/packages/apps/Settings/src/com/android/settings/deviceinfo/StorageDashboardFragment.java b/packages/apps/Settings/src/com/android/settings/deviceinfo/StorageDashboardFragment.java
+--- a/packages/apps/Settings/src/com/android/settings/deviceinfo/StorageDashboardFragment.java
++++ b/packages/apps/Settings/src/com/android/settings/deviceinfo/StorageDashboardFragment.java
+@@ -20,6 +20,7 @@
+ import android.app.settings.SettingsEnums;
+ import android.app.usage.StorageStatsManager;
+ import android.content.Context;
++import com.android.settingslib.deviceinfo.KikiStorageAccounting;
+ import android.graphics.drawable.Drawable;
+ import android.os.Bundle;
+ import android.os.UserHandle;
+@@ -386,7 +387,7 @@
+ 
+         setLoading(false /* loading */, false /* animate */);
+ 
+-        final long privateUsedBytes = mStorageInfo.totalBytes - mStorageInfo.freeBytes;
++        final long privateUsedBytes = KikiStorageAccounting.getUsedBytes(mStorageInfo.totalBytes, mStorageInfo.freeBytes);
+         mPreferenceController.setVolume(mSelectedStorageEntry.getVolumeInfo());
+         mPreferenceController.setUsedSize(privateUsedBytes);
+         mPreferenceController.setTotalSize(mStorageInfo.totalBytes);
+diff --git a/packages/apps/Settings/src/com/android/settings/deviceinfo/StorageCategoryFragment.java b/packages/apps/Settings/src/com/android/settings/deviceinfo/StorageCategoryFragment.java
+--- a/packages/apps/Settings/src/com/android/settings/deviceinfo/StorageCategoryFragment.java
++++ b/packages/apps/Settings/src/com/android/settings/deviceinfo/StorageCategoryFragment.java
+@@ -21,6 +21,7 @@
+ import android.app.settings.SettingsEnums;
+ import android.app.usage.StorageStatsManager;
+ import android.content.Context;
++import com.android.settingslib.deviceinfo.KikiStorageAccounting;
+ import android.graphics.drawable.Drawable;
+ import android.os.Bundle;
+ import android.os.UserManager;
+@@ -212,7 +213,7 @@
+ 
+         setLoading(false /* loading */, false /* animate */);
+ 
+-        final long privateUsedBytes = mStorageInfo.totalBytes - mStorageInfo.freeBytes;
++        final long privateUsedBytes = KikiStorageAccounting.getUsedBytes(mStorageInfo.totalBytes, mStorageInfo.freeBytes);
+         mPreferenceController.setVolume(mSelectedStorageEntry.getVolumeInfo());
+         mPreferenceController.setUsedSize(privateUsedBytes);
+         mPreferenceController.setTotalSize(mStorageInfo.totalBytes);
+diff --git a/packages/apps/Settings/src/com/android/settings/deviceinfo/TopLevelStoragePreferenceController.java b/packages/apps/Settings/src/com/android/settings/deviceinfo/TopLevelStoragePreferenceController.java
+--- a/packages/apps/Settings/src/com/android/settings/deviceinfo/TopLevelStoragePreferenceController.java
++++ b/packages/apps/Settings/src/com/android/settings/deviceinfo/TopLevelStoragePreferenceController.java
+@@ -17,6 +17,7 @@
+ package com.android.settings.deviceinfo;
+ 
+ import android.content.Context;
++import com.android.settingslib.deviceinfo.KikiStorageAccounting;
+ import android.os.UserManager;
+ import android.os.storage.StorageManager;
+ import android.text.format.Formatter;
+@@ -77,7 +78,7 @@
+             final PrivateStorageInfo info = PrivateStorageInfo.getPrivateStorageInfo(
+                     getStorageManagerVolumeProvider());
+ 
+-            long usedBytes = info.totalBytes - info.freeBytes;
++            long usedBytes = KikiStorageAccounting.getUsedBytes(info.totalBytes, info.freeBytes);
+             storageCacheHelper.cacheUsedSize(usedBytes);
+             ThreadUtils.postOnMainThread(() -> {
+                 preference.setSummary(
+diff --git a/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageUsageProgressBarPreferenceController.java b/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageUsageProgressBarPreferenceController.java
+--- a/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageUsageProgressBarPreferenceController.java
++++ b/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageUsageProgressBarPreferenceController.java
+@@ -18,6 +18,7 @@
+ 
+ import android.app.usage.StorageStatsManager;
+ import android.content.Context;
++import com.android.settingslib.deviceinfo.KikiStorageAccounting;
+ import android.os.UserHandle;
+ import android.util.Log;
+ 
+@@ -47,6 +48,7 @@
+     long mTotalBytes;
+     private UsageProgressBarPreference mUsageProgressBarPreference;
+     private StorageEntry mStorageEntry;
++    private Preference mReservedPreference;
+     boolean mIsUpdateStateFromSelectedStorageEntry;
+     private StorageCacheHelper mStorageCacheHelper;
+ 
+@@ -71,6 +73,8 @@
+     @Override
+     public void displayPreference(PreferenceScreen screen) {
+         mUsageProgressBarPreference = screen.findPreference(getPreferenceKey());
++        mReservedPreference = screen.findPreference("storage_reserved");
++        if (mReservedPreference != null) mReservedPreference.setVisible(false);
+     }
+ 
+     private void getStorageStatsAndUpdateUi() {
+@@ -78,7 +82,8 @@
+         if (mStorageEntry != null && mStorageEntry.isMounted() && mStorageEntry.isPrivate()) {
+             StorageCacheHelper.StorageCache cachedData = mStorageCacheHelper.retrieveCachedSize();
+             mTotalBytes = cachedData.totalSize;
+-            mUsedBytes = cachedData.totalUsedSize;
++            mUsedBytes = KikiStorageAccounting.getUsedBytes(
++                    mTotalBytes, mTotalBytes - cachedData.totalUsedSize);
+             mIsUpdateStateFromSelectedStorageEntry = true;
+             updateState(mUsageProgressBarPreference);
+         }
+@@ -92,8 +97,8 @@
+                 if (mStorageEntry.isPrivate()) {
+                     // StorageStatsManager can only query private storages.
+                     mTotalBytes = mStorageStatsManager.getTotalBytes(mStorageEntry.getFsUuid());
+-                    mUsedBytes = mTotalBytes
+-                            - mStorageStatsManager.getFreeBytes(mStorageEntry.getFsUuid());
++                    mUsedBytes = KikiStorageAccounting.getUsedBytes(mTotalBytes,
++                            mStorageStatsManager.getFreeBytes(mStorageEntry.getFsUuid()));
+                 } else {
+                     final File rootFile = mStorageEntry.getPath();
+                     if (rootFile == null) {
+@@ -129,5 +134,15 @@
+         mUsageProgressBarPreference.setTotalSummary(StorageUtils.getStorageSummary(
+                 mContext, R.string.storage_total_summary, mTotalBytes));
+         mUsageProgressBarPreference.setPercent(mUsedBytes, mTotalBytes);
++        if (mReservedPreference != null) {
++            long reserved = KikiStorageAccounting.getReservedBytes(mTotalBytes);
++            mReservedPreference.setVisible(reserved >= 0);
++            if (reserved >= 0) mReservedPreference.setSummary(
++                    StorageUtils.getStorageSizeLabel(mContext, reserved)
++                    + " reserved\nAvailable for user data: "
++                    + StorageUtils.getStorageSizeLabel(mContext,
++                            KikiStorageAccounting.getWritableBytes(mTotalBytes))
++                    + "\nHost usage also includes QCOW2 metadata and may lag space reclamation.");
++        }
+     }
+ }
+diff --git a/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageAsyncLoader.java b/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageAsyncLoader.java
+--- a/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageAsyncLoader.java
++++ b/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageAsyncLoader.java
+@@ -23,6 +23,7 @@
+ 
+ import android.content.ContentResolver;
+ import android.content.Context;
++import com.android.settingslib.deviceinfo.KikiStorageAccounting;
+ import android.content.pm.ApplicationInfo;
+ import android.content.pm.PackageManager;
+ import android.content.pm.PackageManager.NameNotFoundException;
+@@ -154,8 +155,9 @@
+ 
+     private long getSystemSize() {
+         try {
+-            return mStatsManager.getTotalBytes(StorageManager.UUID_DEFAULT)
+-                    - Environment.getDataDirectory().getTotalSpace();
++            long total = mStatsManager.getTotalBytes(StorageManager.UUID_DEFAULT);
++            return KikiStorageAccounting.getSystemBytes(total,
++                    total - Environment.getDataDirectory().getTotalSpace());
+         } catch (IOException e) {
+             Log.e(TAG, "Exception in calculating System category size", e);
+             return 0;
+diff --git a/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageItemPreferenceController.java b/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageItemPreferenceController.java
+--- a/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageItemPreferenceController.java
++++ b/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageItemPreferenceController.java
+@@ -21,6 +21,7 @@
+ import static com.android.settings.dashboard.profileselector.ProfileSelectFragment.WORK_TAB;
+ 
+ import android.content.Context;
++import com.android.settingslib.deviceinfo.KikiStorageAccounting;
+ import android.content.Intent;
+ import android.content.pm.PackageManager;
+ import android.content.pm.UserInfo;
+@@ -458,7 +459,8 @@
+         mOtherPreference.setStorageSize(storageCache.otherSize, mTotalSize, animate);
+         mTrashPreference.setStorageSize(storageCache.trashSize, mTotalSize, animate);
+         if (mSystemPreference != null) {
+-            mSystemPreference.setStorageSize(storageCache.systemSize, mTotalSize, animate);
++            mSystemPreference.setStorageSize(KikiStorageAccounting.getSystemBytes(
++                    mTotalSize, storageCache.systemSize), mTotalSize, animate);
+             mSystemPreference.setTitle(mContext.getString(R.string.storage_os_name,
+                     Build.VERSION.RELEASE_OR_PREVIEW_DISPLAY));
+         }
+diff --git a/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageUtils.java b/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageUtils.java
+--- a/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageUtils.java
++++ b/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StorageUtils.java
+@@ -19,6 +19,7 @@
+ import android.app.Dialog;
+ import android.app.settings.SettingsEnums;
+ import android.content.Context;
++import com.android.settingslib.deviceinfo.KikiStorageAccounting;
+ import android.content.Intent;
+ import android.content.pm.PackageManager;
+ import android.content.pm.ResolveInfo;
+@@ -270,6 +271,16 @@
+     }
+ 
+     /** Gets a summary which has a byte size information. */
++    public static String getKikiTotalSummary(Context context, long total) {
++        String summary = getStorageSummary(context, R.string.storage_total_summary, total);
++        long reserved = KikiStorageAccounting.getReservedBytes(total);
++        if (reserved >= 0) summary += "\nReserved for OTA and filesystem: "
++                + getStorageSizeLabel(context, reserved)
++                + "\nAvailable for user data: "
++                + getStorageSizeLabel(context, KikiStorageAccounting.getWritableBytes(total));
++        return summary;
++    }
++
+     public static String getStorageSummary(Context context, int resId, long bytes) {
+         final Formatter.BytesResult result = Formatter.formatBytes(context.getResources(),
+                 bytes, Formatter.FLAG_SHORTER);
+diff --git a/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StoragePreferenceScreen.kt b/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StoragePreferenceScreen.kt
+--- a/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StoragePreferenceScreen.kt
++++ b/packages/apps/Settings/src/com/android/settings/deviceinfo/storage/StoragePreferenceScreen.kt
+@@ -19,6 +19,8 @@
+ import android.app.settings.SettingsEnums
+ import android.app.usage.StorageStatsManager
+ import android.content.Context
++import android.os.SystemProperties
++import com.android.settingslib.deviceinfo.KikiStorageAccounting
+ import android.content.Intent
+ import android.os.Build
+ import android.os.UserManager
+@@ -90,7 +92,7 @@
+                 StorageUtils.getStorageSummary(
+                     context,
+                     R.string.storage_usage_summary,
+-                    cache.totalUsedSize,
++                    KikiStorageAccounting.getUsedBytes(cache.totalSize, cache.totalSize - cache.totalUsedSize),
+                 )
+             +StoragePreference(
+                 KEY_SUMMARY_USED,
+@@ -103,11 +105,7 @@
+ 
+             // Storage Total
+             val totalSummary =
+-                StorageUtils.getStorageSummary(
+-                    context,
+-                    R.string.storage_total_summary,
+-                    cache.totalSize,
+-                )
++                StorageUtils.getKikiTotalSummary(context, cache.totalSize)
+             +StoragePreference(
+                 KEY_SUMMARY_TOTAL,
+                 R.string.storage_summary_total_purpose,
+@@ -243,7 +241,7 @@
+                 R.string.pref_system_purpose,
+                 0,
+                 { null },
+-                { StorageUtils.getStorageSizeLabel(context, cache.systemSize) },
++                { StorageUtils.getStorageSizeLabel(context, KikiStorageAccounting.getSystemBytes(cache.totalSize, cache.systemSize)) },
+                 { c ->
+                     c.getString(R.string.storage_os_name, Build.VERSION.RELEASE_OR_PREVIEW_DISPLAY)
+                 },
+@@ -301,7 +299,7 @@
+         if (privateStorageInfo != null) {
+             with(cache) {
+                 totalSize = privateStorageInfo.totalBytes
+-                totalUsedSize = privateStorageInfo.totalBytes - privateStorageInfo.freeBytes
++                totalUsedSize = KikiStorageAccounting.getUsedBytes(privateStorageInfo.totalBytes, privateStorageInfo.freeBytes)
+             }
+             cacheHelper.cacheTotalSizeAndTotalUsedSize(cache.totalSize, cache.totalUsedSize)
+         }
+@@ -335,7 +333,8 @@
+                     }
+                     otherData += result.systemSize
+                     temporaryFilesSize =
+-                        kotlin.math.max(DataUnit.GIBIBYTES.toBytes(1), totalUsedSize - otherData)
++                        StorageItemPreferenceController.calculateTemporaryFilesSize(totalUsedSize, otherData,
++                            SystemProperties.getBoolean("ro.kikiaosp.exact_storage_size", false))
+                 }
+                 cacheHelper.cacheSizeInfo(cache)
+             }
+diff --git a/packages/apps/Settings/res/xml/storage_dashboard_fragment.xml b/packages/apps/Settings/res/xml/storage_dashboard_fragment.xml
+--- a/packages/apps/Settings/res/xml/storage_dashboard_fragment.xml
++++ b/packages/apps/Settings/res/xml/storage_dashboard_fragment.xml
+@@ -31,6 +31,12 @@
+         android:selectable="false"
+         settings:searchable="false"
+         settings:controller="com.android.settings.deviceinfo.storage.StorageUsageProgressBarPreferenceController"/>
++    <Preference
++        android:key="storage_reserved"
++        android:order="3"
++        android:title="Reserved for OTA and filesystem"
++        android:selectable="false"
++        settings:searchable="false"/>
+     <com.android.settingslib.PrimarySwitchPreference
+         android:fragment="com.android.settings.deletionhelper.AutomaticStorageManagerSettings"
+         android:key="toggle_asm"

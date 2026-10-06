@@ -1,5 +1,12 @@
 package { default_applicable_licenses: ["kiki_ota_license"], }
 license { name: "kiki_ota_license", visibility: [":__subpackages__"], license_kinds: ["SPDX-license-identifier-Apache-2.0"], license_text: ["NOTICE"], }
+cc_binary {
+    name: "kiki_storage_stats",
+    srcs: ["storage/kiki_storage_stats.cpp"],
+    init_rc: ["storage/kiki-storage-accounting.rc"],
+    cpp_std: "c++17",
+    cflags: ["-Wall", "-Wextra", "-Werror"],
+}
 // Dedicated native-engine trust store; unrelated APK/recovery signing stays unchanged.
 prebuilt_etc {
     name: "KikiOtaCerts",

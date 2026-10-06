@@ -69,6 +69,14 @@ else
   echo "KikiAOSP storage-category patch does not apply cleanly" >&2
   exit 1
 fi
+storage_accounting="$REPO_ROOT/patches/aosp-kikiaosp-sparse-ab-storage-accounting.patch"
+if git -C "$AOSP_ROOT" apply --check "$storage_accounting"; then
+  git -C "$AOSP_ROOT" apply "$storage_accounting"
+elif git -C "$AOSP_ROOT" apply --reverse --check "$storage_accounting"; then
+  echo "Sparse physical A/B storage-accounting patch already applied"
+else
+  echo "Sparse physical A/B storage-accounting patch does not apply cleanly" >&2; exit 1
+fi
 native_trust="$REPO_ROOT/patches/aosp-kikiaosp-native-ota-trust.patch"
 if git -C "$AOSP_ROOT" apply --check "$native_trust"; then
   git -C "$AOSP_ROOT" apply "$native_trust"

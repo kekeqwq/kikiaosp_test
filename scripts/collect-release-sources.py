@@ -62,6 +62,7 @@ def main():
     audit = json.loads(args.package_audit.read_text())
     with zipfile.ZipFile(args.package) as z:
         lock = json.loads(z.read('provenance/source-lock.json'))
+        system_version = json.loads(z.read('manifest.json'))['systemVersion']
         notices = z.read('licenses/aosp.txt').decode('utf-8')
     if (sha(args.package) != audit['package']['sha256'] or
             lock['device']['commit'] != build['deviceCommit'] or
@@ -119,7 +120,7 @@ def main():
     (output / 'aosp-pinned-manifest.xml').write_text(manifest, encoding='utf-8')
     (output / 'source-lock.json').write_text(json.dumps(lock, indent=2) + '\n')
     (output / 'aosp-notices.txt').write_text(notices, encoding='utf-8')
-    provenance = {'version': '0.3.0-alpha', 'packageSha256': sha(args.package),
+    provenance = {'version': system_version, 'packageSha256': sha(args.package),
                   'builtDeviceCommit': build['deviceCommit'], 'kernelCommit': build['kernelCommit'],
                   'noticeIdentifiedCopyleftComponents': sorted(labels), 'projects': source_records,
                   'kernelSourceArchive': source_archive.name, 'kernelSourceArchiveSha256': sha(source_archive),
@@ -148,7 +149,7 @@ def main():
         'Actual built device identity above, not a later pipeline HEAD, describes the system.\n'
         'linux-built.config was extracted from the exact shipped kernel; linux-declared.config is the recipe input.\n'
         'Any historical retained-kernel / Nix rebuild byte difference is recorded explicitly in source-provenance.json.\n')
-    destination = output.with_name('KikiAOSP-0.3.0-alpha-source-kit.tar.gz')
+    destination = output.with_name('KikiAOSP-' + system_version + '-source-kit.tar.gz')
     if destination.exists():
         raise ValueError('Never replace an existing source kit')
     with tarfile.open(destination, 'w:gz', compresslevel=4) as tar:

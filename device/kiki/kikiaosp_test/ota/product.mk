@@ -15,4 +15,6 @@ PRODUCT_COPY_FILES += \
     device/kiki/kikiaosp_test/ota/update-payload-key.pub.pem:system/etc/update_engine/update-payload-key.pub.pem
 PRODUCT_SYSTEM_PROPERTIES += \
     ro.kiki.ota.layout=gpt-ab-v1 \
-    ro.kiki.ota.sequence=4
+    ro.kiki.ota.sequence=5
+
+PRODUCT_PACKAGES += kiki_storage_stats

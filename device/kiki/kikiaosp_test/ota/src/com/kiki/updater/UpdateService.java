@@ -41,7 +41,7 @@ public final class UpdateService extends android.app.Service {
     if(s==UpdateEngine.UpdateStatusConstants.UPDATED_NEED_REBOOT){installing=false;getSharedPreferences(PREF,0).edit().putBoolean("rebootReady",true).commit();state("The update is installed in the inactive slot. Restart to finish updating.",SystemUpdateManager.STATUS_WAITING_REBOOT);}
     else if(s==UpdateEngine.UpdateStatusConstants.DOWNLOADING||s==UpdateEngine.UpdateStatusConstants.VERIFYING||s==UpdateEngine.UpdateStatusConstants.FINALIZING){installing=true;state("Native update engine: stage "+s+", "+Math.round(p*100)+"%",SystemUpdateManager.STATUS_IN_PROGRESS);}
    }
-   public void onPayloadApplicationComplete(int code){if(code!=0){installing=false;clearPending();state("Installation failed (update_engine="+code+"). The current system is still available. Check the logs before retrying.",SystemUpdateManager.STATUS_IDLE);}}
+   public void onPayloadApplicationComplete(int code){if(code==0)SystemProperties.set("sys.kiki.storage.refresh",Long.toString(System.nanoTime()));if(code!=0){installing=false;clearPending();state("Installation failed (update_engine="+code+"). The current system is still available. Check the logs before retrying.",SystemUpdateManager.STATUS_IDLE);}}
   },new Handler(getMainLooper()));
  }
  public int onStartCommand(Intent i,int flags,int id){if(i==null)return START_NOT_STICKY;final String cmd=i.getStringExtra("command"),path=i.getStringExtra("path");

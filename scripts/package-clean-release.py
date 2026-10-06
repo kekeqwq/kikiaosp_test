@@ -37,13 +37,13 @@ CONTRACT_HASHES = {
     "source-lock.schema.json": "023557c5bde711ef6721f7637f6316ca2f84fef983449c1212aa20c088232953",
 }
 FINISHED_PHASE = "clean-candidate-inputs-built-not-packaged-or-accepted"
-VERSION = "0.3.0-alpha"
-MODEL = "KikiAOSP 0.3 Alpha"
-FINGERPRINT = "KikiAOSP/kikiaosp_test/kikiaosp_test:17/CP2A.260605.016/KIKI_0.3.0_ALPHA:userdebug/test-keys"
+VERSION = "0.3.1-alpha"
+MODEL = "KikiAOSP 0.3.1 Alpha"
+FINGERPRINT = "KikiAOSP/kikiaosp_test/kikiaosp_test:17/CP2A.260605.016/KIKI_0.3.1_ALPHA:userdebug/test-keys"
 KERNEL_VERSION = "7.3.0-rc6-4k"
 RELEASE_PROPERTIES = {
     "ro.kikiaosp.build_channel": "release", "ro.kikiaosp.system_version": VERSION,
-    "ro.build.display.id": "KikiAOSP-0.3-Alpha", "ro.build.fingerprint": FINGERPRINT,
+    "ro.build.display.id": "KikiAOSP-0.3.1-Alpha", "ro.build.fingerprint": FINGERPRINT,
 }
 LICENSE_LIMIT = 4194304
 
