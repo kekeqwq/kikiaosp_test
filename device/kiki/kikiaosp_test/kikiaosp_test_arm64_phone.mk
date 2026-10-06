@@ -244,6 +244,7 @@ PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     system/etc/init/kiki-minimal-native.rc \
     system/etc/init/kiki-adb.rc \
     system/etc/init/kiki-checkpoint-logcat.rc \
+    system/etc/init/kiki-checkpoint-prepare.rc \
     system/etc/init/kiki-user-defaults.rc \
     system/bin/kiki-user-defaults.sh \
     vendor/etc/fstab.ranchu \
@@ -255,6 +256,7 @@ PRODUCT_COPY_FILES += \
     device/kiki/kikiaosp_test/init.ranchu.rc:vendor/etc/init/hw/init.ranchu.rc \
     device/kiki/kikiaosp_test/kiki-adb.rc:system/etc/init/kiki-adb.rc \
     device/kiki/kikiaosp_test/kiki-checkpoint-logcat.rc:system/etc/init/kiki-checkpoint-logcat.rc \
+    device/kiki/kikiaosp_test/kiki-checkpoint-prepare.rc:system/etc/init/kiki-checkpoint-prepare.rc \
     device/kiki/kikiaosp_test/kiki-user-defaults.rc:system/etc/init/kiki-user-defaults.rc \
     device/kiki/kikiaosp_test/kiki-user-defaults.sh:system/bin/kiki-user-defaults.sh \
     device/kiki/kikiaosp_test/kiki-minimal-native.rc:system/etc/init/kiki-minimal-native.rc \

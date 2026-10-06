@@ -1,0 +1,16 @@
+# Initialize the normal vold checkpoint lifecycle deterministically on physical
+# A/B, including devices without fstab checkpoint=fs/blk. late-fs has mounted
+# userdata and started the early boot HAL before post-fs-data. Wait for normal
+# prepareCheckpoint to finish before framework startup; fail closed on errors.
+# No format, early commit, forced success, checkpoint bypass or data rollback.
+service kiki_checkpoint_prepare /system/bin/vdc --wait checkpoint prepareCheckpoint
+    class core
+    user system
+    group system
+    disabled
+    oneshot
+    reboot_on_failure reboot,kiki-checkpoint-prepare-failed
+    stdio_to_kmsg
+
+on post-fs-data
+    exec_start kiki_checkpoint_prepare

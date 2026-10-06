@@ -11,6 +11,7 @@ from pathlib import Path
 
 CHECKPOINT_RC_SHA256='9de652cd43e4a14bc8b834892891f02e8d2424d64850a219201af422a8829b1a'
 CHECKPOINT_PATCH_SHA256='0a6f2db3afcbae19df4371ca3a875b1bbe05bae5f83e3873021529dcd50d13c2'
+CHECKPOINT_PREPARE_SHA256='c8a2a691e0e820862ed54ee3d5fc9f7a82615aec5399c9599ee009e7e23d81d0'
 
 def run(*args):print('RUN:',*map(str,args),flush=True);subprocess.run(list(map(str,args)),check=True)
 def module(path):
@@ -43,6 +44,14 @@ def main():
  storage_retry=branch=='fix/alpha-0.3.1-storage-accounting' and changed==[rel+'/ota/Android.bp'] and audit['deviceCommit']=='fd04174394d8bd70fde156f62271eb5ddbfb965d'
  checkpoint_paths=sorted([rel+'/kikiaosp_test_arm64_phone.mk',rel+'/kiki-checkpoint-logcat.rc','patches/aosp-kikiaosp-checkpoint-exception-log.patch'])
  checkpoint_diagnostic=branch=='fix/alpha-0.3.1-storage-accounting' and sorted(changed)==checkpoint_paths and audit['deviceCommit']=='833e5666f1e5c0dce0a18a8f7c5895971f2e1ad9'
+ repair_paths=sorted([rel+'/kikiaosp_test_arm64_phone.mk',rel+'/kiki-checkpoint-prepare.rc'])
+ checkpoint_repair=branch=='fix/alpha-0.3.1-storage-accounting' and sorted(changed)==repair_paths and audit['deviceCommit']=='60f6be631ec73b708bd0f20d3ad8dab046019466'
+ if checkpoint_repair:
+  old_make=(snap/rel/'kikiaosp_test_arm64_phone.mk').read_text();new_make=(a.pipeline/rel/'kikiaosp_test_arm64_phone.mk').read_text()
+  expected_make=old_make.replace('    system/etc/init/kiki-checkpoint-logcat.rc \\\n','    system/etc/init/kiki-checkpoint-logcat.rc \\\n    system/etc/init/kiki-checkpoint-prepare.rc \\\n').replace('    device/kiki/kikiaosp_test/kiki-checkpoint-logcat.rc:system/etc/init/kiki-checkpoint-logcat.rc \\\n','    device/kiki/kikiaosp_test/kiki-checkpoint-logcat.rc:system/etc/init/kiki-checkpoint-logcat.rc \\\n    device/kiki/kikiaosp_test/kiki-checkpoint-prepare.rc:system/etc/init/kiki-checkpoint-prepare.rc \\\n')
+  if new_make!=expected_make or hashlib.sha256((a.pipeline/rel/'kiki-checkpoint-prepare.rc').read_bytes()).hexdigest()!=CHECKPOINT_PREPARE_SHA256:raise ValueError('Unreviewed checkpoint lifecycle repair')
+  old_builder=(snap/'scripts/build-clean-release.py').read_text();new_builder=(a.pipeline/'scripts/build-clean-release.py').read_text()
+  if new_builder!=old_builder.replace('BUILD_NUMBER="KIKI_0.3.0_ALPHA"','BUILD_NUMBER="KIKI_0.3.1_ALPHA"'):raise ValueError('Only the proven build-number identity correction is permitted')
  if checkpoint_diagnostic:
   old_mk=(snap/rel/'kikiaosp_test_arm64_phone.mk').read_text();new_mk=(a.pipeline/rel/'kikiaosp_test_arm64_phone.mk').read_text()
   expected_mk=old_mk.replace('    system/etc/init/kiki-adb.rc \\\n','    system/etc/init/kiki-adb.rc \\\n    system/etc/init/kiki-checkpoint-logcat.rc \\\n').replace('    device/kiki/kikiaosp_test/kiki-adb.rc:system/etc/init/kiki-adb.rc \\\n','    device/kiki/kikiaosp_test/kiki-adb.rc:system/etc/init/kiki-adb.rc \\\n    device/kiki/kikiaosp_test/kiki-checkpoint-logcat.rc:system/etc/init/kiki-checkpoint-logcat.rc \\\n')
@@ -55,7 +64,7 @@ def main():
  if storage_fix:
   old_product=(snap/rel/'ota/product.mk').read_text();new_product=(a.pipeline/rel/'ota/product.mk').read_text()
   if new_product != old_product.replace('ro.kiki.ota.sequence=4','ro.kiki.ota.sequence=5')+'\nPRODUCT_PACKAGES += kiki_storage_stats\n':raise ValueError('Unexpected publisher sequence/native-package change')
- elif not storage_retry and not checkpoint_diagnostic and changed not in allowed:raise ValueError('In-place retry only permits reviewed, explicitly bounded fixes')
+ elif not storage_retry and not checkpoint_diagnostic and not checkpoint_repair and changed not in allowed:raise ValueError('In-place retry only permits reviewed, explicitly bounded fixes')
  if changed==['device/kiki/kikiaosp_test/ota/product.mk']:
   branch=subprocess.check_output(['git','-C',str(a.pipeline),'branch','--show-current']).decode().strip()
   old_product=(snap/changed[0]).read_bytes();new_product=(a.pipeline/changed[0]).read_bytes()

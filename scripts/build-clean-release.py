@@ -53,7 +53,7 @@ def build_environment(out):
         env.pop(key, None)
     # Relative logical out is important: multiple Android 17 modules reject
     # generated absolute paths outside TOP. physical out remains independent.
-    env.update(OUT_DIR=str(out), BUILD_NUMBER="KIKI_0.3.0_ALPHA", BUILD_USERNAME="KikiEmu",
+    env.update(OUT_DIR=str(out), BUILD_NUMBER="KIKI_0.3.1_ALPHA", BUILD_USERNAME="KikiEmu",
                BUILD_HOSTNAME="release-builder", SOONG_NINJA="ninja", USE_RBE="false", USE_REWRAPPER="false")
     return env
 
