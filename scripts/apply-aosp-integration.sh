@@ -77,6 +77,14 @@ elif git -C "$AOSP_ROOT" apply --reverse --check "$storage_accounting"; then
 else
   echo "Sparse physical A/B storage-accounting patch does not apply cleanly" >&2; exit 1
 fi
+checkpoint_log="$REPO_ROOT/patches/aosp-kikiaosp-checkpoint-exception-log.patch"
+if git -C "$AOSP_ROOT" apply --check "$checkpoint_log"; then
+  git -C "$AOSP_ROOT" apply "$checkpoint_log"
+elif git -C "$AOSP_ROOT" apply --reverse --check "$checkpoint_log"; then
+  echo "Checkpoint exception logging patch already applied"
+else
+  echo "Checkpoint exception logging patch does not apply cleanly" >&2; exit 1
+fi
 native_trust="$REPO_ROOT/patches/aosp-kikiaosp-native-ota-trust.patch"
 if git -C "$AOSP_ROOT" apply --check "$native_trust"; then
   git -C "$AOSP_ROOT" apply "$native_trust"

@@ -9,6 +9,9 @@ a claim that the prior failed record now describes the changed working tree.
 import argparse,hashlib,importlib.util,json,os,shutil,subprocess
 from pathlib import Path
 
+CHECKPOINT_RC_SHA256='9de652cd43e4a14bc8b834892891f02e8d2424d64850a219201af422a8829b1a'
+CHECKPOINT_PATCH_SHA256='0a6f2db3afcbae19df4371ca3a875b1bbe05bae5f83e3873021529dcd50d13c2'
+
 def run(*args):print('RUN:',*map(str,args),flush=True);subprocess.run(list(map(str,args)),check=True)
 def module(path):
  s=importlib.util.spec_from_file_location('packer',path);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
@@ -38,13 +41,21 @@ def main():
  storage_paths=sorted([rel+'/ota/Android.bp',rel+'/ota/product.mk',rel+'/kikiaosp_test_arm64_phone_release.mk',rel+'/ota/storage/StorageImageSizes.h',rel+'/ota/storage/kiki_storage_stats.cpp',rel+'/ota/storage/kiki-storage-accounting.rc',rel+'/ota/src/com/kiki/updater/UpdateService.java','patches/aosp-kikiaosp-sparse-ab-storage-accounting.patch','overlays/frameworks/base/packages/SettingsLib/src/com/android/settingslib/deviceinfo/KikiStorageAccounting.java'])
  storage_fix=branch=='fix/alpha-0.3.1-storage-accounting' and sorted(changed)==storage_paths and audit['deviceCommit']=='4b3e71fca9d63c1f8ce3be5430444c7c52290971'
  storage_retry=branch=='fix/alpha-0.3.1-storage-accounting' and changed==[rel+'/ota/Android.bp'] and audit['deviceCommit']=='fd04174394d8bd70fde156f62271eb5ddbfb965d'
+ checkpoint_paths=sorted([rel+'/kikiaosp_test_arm64_phone.mk',rel+'/kiki-checkpoint-logcat.rc','patches/aosp-kikiaosp-checkpoint-exception-log.patch'])
+ checkpoint_diagnostic=branch=='fix/alpha-0.3.1-storage-accounting' and sorted(changed)==checkpoint_paths and audit['deviceCommit']=='833e5666f1e5c0dce0a18a8f7c5895971f2e1ad9'
+ if checkpoint_diagnostic:
+  old_mk=(snap/rel/'kikiaosp_test_arm64_phone.mk').read_text();new_mk=(a.pipeline/rel/'kikiaosp_test_arm64_phone.mk').read_text()
+  expected_mk=old_mk.replace('    system/etc/init/kiki-adb.rc \\\n','    system/etc/init/kiki-adb.rc \\\n    system/etc/init/kiki-checkpoint-logcat.rc \\\n').replace('    device/kiki/kikiaosp_test/kiki-adb.rc:system/etc/init/kiki-adb.rc \\\n','    device/kiki/kikiaosp_test/kiki-adb.rc:system/etc/init/kiki-adb.rc \\\n    device/kiki/kikiaosp_test/kiki-checkpoint-logcat.rc:system/etc/init/kiki-checkpoint-logcat.rc \\\n')
+  if new_mk!=expected_mk:raise ValueError('Only installing the bounded early checkpoint logger is allowed')
+  if hashlib.sha256((a.pipeline/rel/'kiki-checkpoint-logcat.rc').read_bytes()).hexdigest()!=CHECKPOINT_RC_SHA256:raise ValueError('Unreviewed early diagnostic logger')
+  if hashlib.sha256((a.pipeline/'patches/aosp-kikiaosp-checkpoint-exception-log.patch').read_bytes()).hexdigest()!=CHECKPOINT_PATCH_SHA256:raise ValueError('Unreviewed exception diagnostic patch')
  if storage_retry:
   old_bp=(snap/rel/'ota/Android.bp').read_text();new_bp=(a.pipeline/rel/'ota/Android.bp').read_text()
   if new_bp != old_bp.replace('    cpp_std: "c++17",\n','    cpp_std: "c++17",\n    cppflags: ["-fexceptions"],\n'):raise ValueError('Only the actual leaf-module exception-flag repair is allowed')
  if storage_fix:
   old_product=(snap/rel/'ota/product.mk').read_text();new_product=(a.pipeline/rel/'ota/product.mk').read_text()
   if new_product != old_product.replace('ro.kiki.ota.sequence=4','ro.kiki.ota.sequence=5')+'\nPRODUCT_PACKAGES += kiki_storage_stats\n':raise ValueError('Unexpected publisher sequence/native-package change')
- elif not storage_retry and changed not in allowed:raise ValueError('In-place retry only permits reviewed, explicitly bounded fixes')
+ elif not storage_retry and not checkpoint_diagnostic and changed not in allowed:raise ValueError('In-place retry only permits reviewed, explicitly bounded fixes')
  if changed==['device/kiki/kikiaosp_test/ota/product.mk']:
   branch=subprocess.check_output(['git','-C',str(a.pipeline),'branch','--show-current']).decode().strip()
   old_product=(snap/changed[0]).read_bytes();new_product=(a.pipeline/changed[0]).read_bytes()
@@ -68,6 +79,9 @@ def main():
   destination=aosp/'frameworks/base/packages/SettingsLib/src/com/android/settingslib/deviceinfo/KikiStorageAccounting.java'
   if destination.exists():raise ValueError('Unexpected pre-existing new accounting overlay')
   shutil.copy2(overlay,destination)
+ if checkpoint_diagnostic:
+  run('git','-C',aosp,'apply','--check',record/'device-source/patches/aosp-kikiaosp-checkpoint-exception-log.patch')
+  run('git','-C',aosp,'apply',record/'device-source/patches/aosp-kikiaosp-checkpoint-exception-log.patch')
  run('bash',record/'device-source/scripts/audit-aosp-integration.sh',aosp)
  mode='Audited failed native release-only compiler output resumed IN PLACE; same physical paths, reviewed whitelist-only fixes; unchanged device file timestamps preserved after byte checks; no development/userdata; incremental rebuild'
  source['sharedInputs']=mode;source['nativeRetryBaseRecord']=str(old);(prep/'prepare.json').write_text(json.dumps(source,indent=2)+'\n')

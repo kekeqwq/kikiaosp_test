@@ -1,0 +1,13 @@
+diff --git a/frameworks/base/services/core/java/com/android/server/am/ActivityManagerService.java b/frameworks/base/services/core/java/com/android/server/am/ActivityManagerService.java
+--- a/frameworks/base/services/core/java/com/android/server/am/ActivityManagerService.java
++++ b/frameworks/base/services/core/java/com/android/server/am/ActivityManagerService.java
+@@ -5984,8 +5984,9 @@
+             Slog.i(TAG, "About to commit checkpoint");
+             IStorageManager storageManager = InstallLocationUtils.getStorageManager();
+             storageManager.commitChanges();
+         } catch (Exception e) {
++            Slog.e(TAG, "Checkpoint commit failed; retaining user data", e);
+             PowerManager pm = (PowerManager)
+                      mInjector.getContext().getSystemService(Context.POWER_SERVICE);
+             pm.reboot("Checkpoint commit failed");
+         }

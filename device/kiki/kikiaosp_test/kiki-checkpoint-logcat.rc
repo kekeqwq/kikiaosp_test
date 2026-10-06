@@ -1,0 +1,12 @@
+# Bounded checkpoint/boot-control startup diagnostics for userdebug KikiAOSP.
+# Only selected system-service tags; no application or host-desktop capture.
+# Does not change checkpoint, success, rollback, authentication or format behavior.
+service kiki_checkpoint_logcat /system/bin/logcat -b main -b system -b crash -v threadtime Checkpoint:V vold:I ActivityManager:I StorageManagerService:I android.hardware.boot-service.default:V *:S
+    class core
+    user root
+    group log
+    disabled
+    stdio_to_kmsg
+
+on post-fs-data
+    start kiki_checkpoint_logcat
