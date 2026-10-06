@@ -140,6 +140,20 @@ def main():
     dst.write(stage/(Path(info.filename).stem+'.img'),info.filename,compress_type=zipfile.ZIP_DEFLATED)
    else:copy_entry(src,dst,info)
   if 'IMAGES/boot.img' not in names:dst.write(stage/'boot.img','IMAGES/boot.img',compress_type=zipfile.ZIP_DEFLATED)
+ # All filesystem-tree differences and canonical replacements are already
+ # verified and copied into target-files. Release ONLY generated reconstructions
+ # and duplicate raw staging before the native tool's own extraction, retaining
+ # the original target snapshot/baseline and the full adaptation hash receipt.
+ released=[]
+ for name in ('system-readonly','system-target-readonly','vendor-readonly','vendor-target-readonly'):
+  f=stage/name
+  if f.exists():
+   if f.is_symlink():raise ValueError('Unexpected staging symlink')
+   shutil.rmtree(f);released.append(name)
+ for role in CAP:
+  f=stage/(role+'.img')
+  if f.exists():f.unlink();released.append(f.name)
+ (a.output/'staging-release-receipt.json').write_bytes(raw({'phase':'canonical-target-files-audited','releasedGeneratedDuplicates':released,'filesystemImageAdaptation':image_adaptation,'retainedBaselineSha256':digest(baseline),'retainedAdaptedTargetFilesSha256':digest(target)}))
  jdk=Path(json.loads((a.record/'build-audit.json').read_text())['aosp'])/'prebuilts/jdk/jdk21/linux-x86'
  if not (jdk/'bin/java').is_file():raise ValueError('Matching pinned AOSP JDK missing')
  env=dict(os.environ,PATH=str(a.host/'bin')+':'+str(jdk/'bin')+':/usr/bin:/bin',JAVA_HOME=str(jdk),LD_LIBRARY_PATH=str(a.host/'lib64'))
