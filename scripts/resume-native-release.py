@@ -16,7 +16,7 @@ def module(path):
 def main():
  p=argparse.ArgumentParser();p.add_argument('--pipeline',type=Path,required=True);p.add_argument('--old-stage',type=Path,required=True);p.add_argument('--new-stage',type=Path,required=True);a=p.parse_args()
  old=a.old_stage/'build-record';old_pre=a.old_stage/'preparation';audit=json.loads((old/'build-audit.json').read_text());source=json.loads((old_pre/'prepare.json').read_text())
- if audit['phase'] not in ('building-aosp','clean-candidate-inputs-built-not-packaged-or-accepted') or audit['recipe']!='kikiaosp-release-v1' or audit['systemVersion']!='0.3.0-alpha' or a.new_stage.exists():raise ValueError('Only this exact audited native release compiler can resume to a NEW record')
+ if audit['phase'] not in ('building-aosp','clean-candidate-inputs-built-not-packaged-or-accepted') or audit['recipe']!='kikiaosp-release-v1' or audit['systemVersion'] not in ('0.3.0-alpha','0.3.1-alpha') or a.new_stage.exists():raise ValueError('Only this exact audited native release compiler can resume to a NEW record')
  aosp=Path(audit['aosp']).resolve();out=Path(audit['output']).resolve();snap=old/'device-source'
  if not str(aosp).startswith('/home/keke/aosp-release-0.3-ota-') or not str(out).startswith('/home/keke/aosp-release-output-0.3-ota-'):raise ValueError('Not an owned native release-only source/output')
  if (aosp/'out').resolve()!=out:raise ValueError('Physical source/output alias changed')
@@ -37,10 +37,14 @@ def main():
  branch=subprocess.check_output(['git','-C',str(a.pipeline),'branch','--show-current']).decode().strip()
  storage_paths=sorted([rel+'/ota/Android.bp',rel+'/ota/product.mk',rel+'/kikiaosp_test_arm64_phone_release.mk',rel+'/ota/storage/StorageImageSizes.h',rel+'/ota/storage/kiki_storage_stats.cpp',rel+'/ota/storage/kiki-storage-accounting.rc',rel+'/ota/src/com/kiki/updater/UpdateService.java','patches/aosp-kikiaosp-sparse-ab-storage-accounting.patch','overlays/frameworks/base/packages/SettingsLib/src/com/android/settingslib/deviceinfo/KikiStorageAccounting.java'])
  storage_fix=branch=='fix/alpha-0.3.1-storage-accounting' and sorted(changed)==storage_paths and audit['deviceCommit']=='4b3e71fca9d63c1f8ce3be5430444c7c52290971'
+ storage_retry=branch=='fix/alpha-0.3.1-storage-accounting' and changed==[rel+'/ota/Android.bp'] and audit['deviceCommit']=='fd04174394d8bd70fde156f62271eb5ddbfb965d'
+ if storage_retry:
+  old_bp=(snap/rel/'ota/Android.bp').read_text();new_bp=(a.pipeline/rel/'ota/Android.bp').read_text()
+  if new_bp != old_bp.replace('    cpp_std: "c++17",\n','    cpp_std: "c++17",\n    cppflags: ["-fexceptions"],\n'):raise ValueError('Only the actual leaf-module exception-flag repair is allowed')
  if storage_fix:
   old_product=(snap/rel/'ota/product.mk').read_text();new_product=(a.pipeline/rel/'ota/product.mk').read_text()
   if new_product != old_product.replace('ro.kiki.ota.sequence=4','ro.kiki.ota.sequence=5')+'\nPRODUCT_PACKAGES += kiki_storage_stats\n':raise ValueError('Unexpected publisher sequence/native-package change')
- elif changed not in allowed:raise ValueError('In-place retry only permits reviewed, explicitly bounded fixes')
+ elif not storage_retry and changed not in allowed:raise ValueError('In-place retry only permits reviewed, explicitly bounded fixes')
  if changed==['device/kiki/kikiaosp_test/ota/product.mk']:
   branch=subprocess.check_output(['git','-C',str(a.pipeline),'branch','--show-current']).decode().strip()
   old_product=(snap/changed[0]).read_bytes();new_product=(a.pipeline/changed[0]).read_bytes()

@@ -5,6 +5,7 @@ cc_binary {
     srcs: ["storage/kiki_storage_stats.cpp"],
     init_rc: ["storage/kiki-storage-accounting.rc"],
     cpp_std: "c++17",
+    cppflags: ["-fexceptions"],
     cflags: ["-Wall", "-Wextra", "-Werror"],
 }
 // Dedicated native-engine trust store; unrelated APK/recovery signing stays unchanged.
