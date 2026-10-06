@@ -1,6 +1,12 @@
 # KikiAOSP Test
 
-## 0.3 Alpha: native FULL OTA
+## 0.3.1 Alpha: sparse A/B storage accounting
+
+Authorized hotfix, publisher sequence5: actual boot/EROFS image lengths + live userdata used, separate unused OTA/filesystem reserves and writable user capacity. A bounded read-only inventory replaces the misleading full-slot-budget system category; no partition resize or userdata formatting. The0.3 launcher remains compatible. Existing0.3 instances can now perform genuine public online0.3→0.3.1 OTA acceptance; user manual acceptance is NOT claimed passed. [Current release details](docs/RELEASE_0_3_1_ALPHA.md).
+
+Kernel, QEMU, audio policy and native trust/no-wipe engine are unchanged. Older0.1/0.2 Release pages may be retired per user request only after exact preferred sources have been retained publicly in0.3.1. Tags/history and0.3 are preserved. Historical instructions below refer to their original release periods, not a required legacy disk migration.
+
+## Historical0.3 Alpha: native FULL OTA
 
 The user authorized publication from completed engineering tests. User-side real online OTA acceptance is deferred until a future 0.4 update; it is NOT claimed passed. [Release details](docs/RELEASE_0_3_ALPHA.md).
 
